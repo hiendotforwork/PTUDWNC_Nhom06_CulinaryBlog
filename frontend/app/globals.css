@@ -1,26 +1,109 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  --font-serif: var(--font-serif), "Playfair Display", Georgia, serif;
+  --font-sans: var(--font-sans), "Plus Jakarta Sans", system-ui, sans-serif;
+
+  --color-primary-50: #FDF8F6;
+  --color-primary-100: #F9EEEC;
+  --color-primary-200: #F3DDD8;
+  --color-primary-300: #E8C4BB;
+  --color-primary-400: #E0AFA0;
+  --color-primary-500: #C98F7D;
+  --color-primary-600: #B0705E;
+  --color-primary-700: #8A5548;
+  --color-primary-800: #734A41;
+  --color-primary-900: #60413A;
+  --color-primary: #C98F7D;
+
+  --color-cream: #F4F3EE;
+  --color-cream-light: #FAF9F6;
+  --color-charcoal: #463F3A;
+  --color-charcoal-light: #685E57;
+  --color-stone-border: #DCD8D2;
+  --color-stone-muted: #8A817C;
+  --color-stone-light: #EFECE6;
+
+  --color-sage: #6B8E6B;
+  --color-sage-light: #E8EFE8;
+  --color-honey: #C89B3C;
+  --color-honey-light: #FBF4E4;
+  --color-muted-red: #B85C5C;
+  --color-muted-red-light: #F9EBEB;
+  --color-slate-blue: #6B8499;
+  --color-slate-blue-light: #EBF1F5;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+:root {
+  --background: #F4F3EE;
+  --foreground: #463F3A;
+  --surface: #FFFFFF;
+  --surface-subtle: #FAF9F6;
+  --border: #DCD8D2;
+  --primary: #C98F7D;
+  --primary-accent: #E0AFA0;
+  --primary-hover: #B0705E;
+  --text-muted: #8A817C;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #181614;
+    --foreground: #F5F3EF;
+    --surface: #24211E;
+    --surface-subtle: #2C2925;
+    --border: #3D3934;
+    --primary: #E0AFA0;
+    --primary-accent: #C98F7D;
+    --primary-hover: #E8C4BB;
+    --text-muted: #A8A29E;
   }
 }
 
 body {
-  background: var(--background);
+  background-color: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  min-height: 100dvh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Accessible focus ring */
+*:focus-visible {
+  outline: 2px solid #C98F7D;
+  outline-offset: 2px;
+}
+
+/* Editorial selection color */
+::selection {
+  background-color: #E8C4BB;
+  color: #60413A;
+}
+
+/* Double-bezel hardware container utility */
+.double-bezel {
+  position: relative;
+  background-color: rgba(138, 129, 124, 0.08);
+  padding: 6px;
+  border-radius: 1.5rem;
+  border: 1px solid rgba(188, 184, 177, 0.4);
+}
+
+.double-bezel-inner {
+  border-radius: calc(1.5rem - 6px);
+  background-color: var(--surface);
+  box-shadow: 0 1px 3px rgba(70, 63, 58, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
