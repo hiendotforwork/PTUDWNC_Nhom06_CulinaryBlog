@@ -3,7 +3,11 @@
 **Version:** 1.0.0
 **Date:** 2026-09-11
 **Scope:** FR-AUTH Module Only
-**Target:** PostgreSQL 16 + ASP.NET Core Identity + EF Core
+**Target:** Supabase Database (PostgreSQL 16) + ASP.NET Core Identity + EF Core
+
+**Storage and Query Platform:** Supabase cung cấp PostgreSQL managed database.
+Backend truy vấn và ghi dữ liệu thông qua EF Core/Npgsql bằng connection string của Supabase;
+schema, migrations và các ràng buộc vẫn tuân theo PostgreSQL.
 
 ---
 
@@ -298,12 +302,12 @@ erDiagram
 
 ---
 
-## 6. PostgreSQL DDL
+## 6. Supabase PostgreSQL DDL
 
 ```sql
 -- ============================================================================
 -- FR-AUTH Database Schema for Culinary Blog
--- PostgreSQL 16
+-- Supabase Database (PostgreSQL 16)
 -- ============================================================================
 
 -- Enable required extensions

@@ -419,8 +419,8 @@ Hình 2.1. Sơ đồ bối cảnh hệ thống Culinary Blog
 | Hệ thống Ngoài  | Vai trò                 | Giao thức / Chuẩn    | Hướng tích hợp        |
 | --------------- | ----------------------- | -------------------- | --------------------- |
 |                 | Hệ quản trị CSDL quan   | TCP + Npgsql Driver  |                       |
-| PostgreSQL 16   |                         |                      | Backend → PostgreSQL  |
-|                 | hệ chính (RDBMS)        | (EF Core)            |                       |
+| Supabase        | hệ chính (PostgreSQL 16 |                      | Backend → Supabase    |
+| Database        | managed database)       | (EF Core)            | PostgreSQL            |
 |                 | Distributed Cache &     | TCP +                |                       |
 | Redis 7         |                         |                      | Backend → Redis       |
 |                 | Session Store           | StackExchange.Redis  |                       |
@@ -639,7 +639,7 @@ Mã ràng
 |     | Loại  Mô tả ràng buộc  |     |     |
 | --- | ---------------------- | --- | --- |
 buộc
-PostgreSQL là DBMS duy nhất. Migrations qua EF Core Code-
+Supabase Database (PostgreSQL 16) là DBMS duy nhất. Migrations qua EF Core Code First.
 CONS-006  Database  First. Không viết raw SQL trực tiếp (dùng LINQ hoặc Raw SQL có
 parameterization qua EF Core).
 Kích thước tệp tải lên tối đa 5 MB. Định dạng chỉ chấp nhận:
@@ -661,8 +661,9 @@ CorrelationId, RequestPath, UserId (khi đã xác thực).
 2.6.1. Giả định
 •  Môi trường development có kết nối Internet để pull Docker images và package
 NuGet/npm.
-•  PostgreSQL, Redis và MinIO được cung cấp qua Docker Compose trong
-development và dưới dạng managed service (hoặc VPS) trong production.
+•  Supabase Database được sử dụng làm managed PostgreSQL database cho môi
+ trường development và production. Redis và MinIO được cung cấp qua Docker
+ Compose trong development hoặc dưới dạng managed service trong production.
 •  Người dùng cuối có trình duyệt hiện đại và kết nối Internet đủ ổn định để load ảnh từ
 MinIO.
 •  Dữ liệu test (seed) được tạo bằng thư viện Bogus với 50 recipe mẫu và 5 tác giả
