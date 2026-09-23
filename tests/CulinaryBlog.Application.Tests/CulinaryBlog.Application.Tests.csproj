@@ -26,6 +26,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\CulinaryBlog.Application\CulinaryBlog.Application.csproj" />
     <ProjectReference Include="..\..\src\CulinaryBlog.Domain\CulinaryBlog.Domain.csproj" />
+    <ProjectReference Include="..\..\src\CulinaryBlog.Infrastructure\CulinaryBlog.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
