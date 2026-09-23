@@ -27,20 +27,14 @@ if (labCommand is not null)
     var connection = builder.Configuration.GetConnectionString("DefaultConnection");
     if (string.IsNullOrWhiteSpace(connection))
         throw new InvalidOperationException("Set ConnectionStrings__DefaultConnection locally; do not commit credentials.");
-    var options = new DbContextOptionsBuilder<CulinaryBlogDbContext>()
-        .UseNpgsql(connection, n => n.MigrationsHistoryTable("__EFMigrationsHistory", "culinary")).Options;
-    await using var db = new CulinaryBlogDbContext(options);
+var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(connection).Options;
+    await using var db = new ApplicationDbContext(options);
     if (labCommand == "--lab2-migrate") await db.Database.MigrateAsync();
     if (labCommand == "--lab2-seed") await Lab2Seeder.SeedAsync(db);
     if (labCommand != "--lab2-migrate")
         Console.WriteLine(JsonSerializer.Serialize(await Lab2Seeder.VerifyAsync(db), new JsonSerializerOptions { WriteIndented = true }));
     return;
 }
-var databaseConnection = builder.Configuration.GetConnectionString("DefaultConnection");
-if (!string.IsNullOrWhiteSpace(databaseConnection))
-    builder.Services.AddDbContext<CulinaryBlogDbContext>(o => o.UseNpgsql(databaseConnection,
-        n => n.MigrationsHistoryTable("__EFMigrationsHistory", "culinary")));
-
 // Add services to the container.
 if (!builder.Environment.IsEnvironment("Testing"))
 {

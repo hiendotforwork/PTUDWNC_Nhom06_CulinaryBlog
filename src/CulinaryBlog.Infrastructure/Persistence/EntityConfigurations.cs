@@ -9,7 +9,7 @@ internal static class Mapping
 {
     public static void Base<T>(EntityTypeBuilder<T> b, string table) where T : BaseEntity
     {
-        b.ToTable(table, t => t.HasCheckConstraint($"CK_{table}_RowVersion", "octet_length(\"RowVersion\") = 16"));
+        b.ToTable(table, "culinary", t => t.HasCheckConstraint($"CK_{table}_RowVersion", "octet_length(\"RowVersion\") = 16"));
         b.HasKey(x => x.Id);
         b.Property(x => x.RowVersion).IsRequired().IsConcurrencyToken().ValueGeneratedNever();
         b.Property(x => x.IsDeleted).HasDefaultValue(false);
@@ -53,7 +53,7 @@ public sealed class RecipeConfiguration : IEntityTypeConfiguration<Recipe>
         b.HasIndex(x => new { x.CreatedAt, x.Id }).IsDescending().HasFilter("NOT \"IsDeleted\" AND \"Status\" = 1");
         b.HasIndex(x => new { x.AuthorId, x.Status, x.CreatedAt, x.Id }).HasFilter("NOT \"IsDeleted\"");
         b.HasOne(x => x.Category).WithMany(x => x.Recipes).HasForeignKey(x => x.CategoryId).OnDelete(DeleteBehavior.Restrict);
-        b.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.AuthorId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<CulinaryBlog.Domain.Entities.ApplicationUser>().WithMany().HasForeignKey(x => x.AuthorId).OnDelete(DeleteBehavior.Restrict);
         b.OwnsOne(x => x.Nutrition, n => {
             foreach (var name in new[] { "Calories", "Protein", "Carbohydrates", "Fat", "Fiber", "Sodium" })
                 n.Property<decimal?>(name).HasColumnName("Nutrition_" + name).HasPrecision(8, 2);

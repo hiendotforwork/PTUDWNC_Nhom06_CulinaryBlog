@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore.Storage;
 using CulinaryBlog.Infrastructure.Persistence;
+using CulinaryBlog.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
@@ -9,18 +10,18 @@ var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__De
 var cs = new NpgsqlConnectionStringBuilder(connectionString);
 if (cs.Host is not ("127.0.0.1" or "localhost") || cs.Database != "culinary_lab2")
     throw new InvalidOperationException("Checks are restricted to local culinary_lab2.");
-var options = new DbContextOptionsBuilder<CulinaryBlogDbContext>().UseNpgsql(connectionString).Options;
-await using var db = new CulinaryBlogDbContext(options);
+var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(connectionString).Options;
+await using var db = new ApplicationDbContext(options);
 Console.WriteLine(await Lab2Seeder.VerifyAsync(db));
 var sampleId = await db.Recipes.Where(x => x.Slug.StartsWith("lab2-chuong-")).Select(x => x.Id).FirstAsync();
 
 await using (var connection = new NpgsqlConnection(connectionString))
 {
     await connection.OpenAsync();
-    var sharedOptions = new DbContextOptionsBuilder<CulinaryBlogDbContext>().UseNpgsql(connection).Options;
-    await using var first = new CulinaryBlogDbContext(sharedOptions);
+    var sharedOptions = new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(connection).Options;
+    await using var first = new ApplicationDbContext(sharedOptions);
     await using var tx = await first.Database.BeginTransactionAsync();
-    await using var second = new CulinaryBlogDbContext(sharedOptions);
+    await using var second = new ApplicationDbContext(sharedOptions);
     await second.Database.UseTransactionAsync(tx.GetDbTransaction());
     var a = await first.Recipes.SingleAsync(x => x.Id == sampleId);
     var b = await second.Recipes.SingleAsync(x => x.Id == sampleId);

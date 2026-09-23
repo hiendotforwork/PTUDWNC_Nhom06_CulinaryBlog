@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using CulinaryBlog.Domain.Entities;
+using CulinaryBlog.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
 namespace CulinaryBlog.Infrastructure.Persistence;
@@ -12,13 +13,13 @@ public static class Lab2Seeder
     private const string Prefix = "lab2-chuong-";
     private static Guid Key(string value) => new(MD5.HashData(Encoding.UTF8.GetBytes(Prefix + value)));
 
-    public static async Task SeedAsync(CulinaryBlogDbContext db)
+    public static async Task SeedAsync(ApplicationDbContext db)
     {
         await using var tx = await db.Database.BeginTransactionAsync();
         await db.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(2312588)");
         const string authorId = "lab2-chuong-demo-author";
         if (!await db.Users.AnyAsync(x => x.Id == authorId))
-            db.Users.Add(new ApplicationUser { Id = authorId, UserName = "lab2.chuong", NormalizedUserName = "LAB2.CHUONG", DisplayName = "Tác giả dữ liệu Lab 2", Email = "lab2.chuong@example.invalid", NormalizedEmail = "LAB2.CHUONG@EXAMPLE.INVALID", IsActive = false });
+            db.Users.Add(new CulinaryBlog.Domain.Entities.ApplicationUser { Id = authorId, UserName = "lab2.chuong", NormalizedUserName = "LAB2.CHUONG", DisplayName = "Tác giả dữ liệu Lab 2", Email = "lab2.chuong@example.invalid", NormalizedEmail = "LAB2.CHUONG@EXAMPLE.INVALID", IsActive = false });
         string[] categoryNames = ["Món khai vị", "Món chính", "Món canh", "Món xào", "Món kho", "Món nướng", "Món hấp", "Món chiên", "Món luộc", "Món chay", "Món ăn sáng", "Món ăn nhẹ", "Món tráng miệng", "Bánh", "Đồ uống", "Món gỏi", "Món súp", "Món lẩu", "Món cuốn", "Món cơm"];
         var categories = await db.Categories.IgnoreQueryFilters().Where(x => x.Slug.StartsWith(Prefix)).ToDictionaryAsync(x => x.Id);
         for (var i = 0; i < categoryNames.Length; i++)
@@ -57,7 +58,7 @@ public static class Lab2Seeder
         await tx.CommitAsync();
     }
 
-    public static async Task<Lab2Counts> VerifyAsync(CulinaryBlogDbContext db)
+    public static async Task<Lab2Counts> VerifyAsync(ApplicationDbContext db)
     {
         var recipes = db.Recipes.Where(x => x.Slug.StartsWith(Prefix));
         var counts = new Lab2Counts(
