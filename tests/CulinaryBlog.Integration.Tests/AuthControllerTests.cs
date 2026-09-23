@@ -230,19 +230,23 @@ public class AuthControllerTests : IClassFixture<CustomWebApplicationFactory>
 
         var wrongLoginRequest = new LoginRequest(registerRequest.Email, "WrongPassword123!");
 
-        // Act: Fail 5 times to trigger lockout
-        for (var i = 0; i < 5; i++)
+        // Act: Fail 4 times (first 4 return 401 Unauthorized)
+        for (var i = 0; i < 4; i++)
         {
             var res = await _client.PostAsJsonAsync("/api/v1/auth/login", wrongLoginRequest);
             res.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         }
 
-        // 6th attempt should return 423 Locked
-        var lockedResponse = await _client.PostAsJsonAsync("/api/v1/auth/login", wrongLoginRequest);
+        // 5th attempt reaches max failed attempts (5) and triggers 423 Locked
+        var fifthResponse = await _client.PostAsJsonAsync("/api/v1/auth/login", wrongLoginRequest);
+        fifthResponse.StatusCode.Should().Be(HttpStatusCode.Locked);
+        var body5 = await fifthResponse.Content.ReadAsStringAsync();
+        body5.Should().Contain("AUTH_ACCOUNT_LOCKED");
 
-        // Assert
-        lockedResponse.StatusCode.Should().Be(HttpStatusCode.Locked);
-        var body = await lockedResponse.Content.ReadAsStringAsync();
-        body.Should().Contain("AUTH_ACCOUNT_LOCKED");
+        // Subsequent attempt while locked also returns 423 Locked
+        var sixthResponse = await _client.PostAsJsonAsync("/api/v1/auth/login", wrongLoginRequest);
+        sixthResponse.StatusCode.Should().Be(HttpStatusCode.Locked);
+        var body6 = await sixthResponse.Content.ReadAsStringAsync();
+        body6.Should().Contain("AUTH_ACCOUNT_LOCKED");
     }
 }

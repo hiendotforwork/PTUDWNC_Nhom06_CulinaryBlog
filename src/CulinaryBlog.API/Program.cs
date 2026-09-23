@@ -118,6 +118,7 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddAuthorization();
 
 // Rate Limiter Configuration
+var defaultPermitLimit = builder.Environment.IsEnvironment("Testing") ? 1000 : 10;
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -126,7 +127,7 @@ builder.Services.AddRateLimiter(options =>
             partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
             factory: _ => new FixedWindowRateLimiterOptions
             {
-                PermitLimit = 10,
+                PermitLimit = defaultPermitLimit,
                 Window = TimeSpan.FromMinutes(1)
             }));
     options.AddPolicy("LoginRateLimit", httpContext =>
@@ -134,7 +135,7 @@ builder.Services.AddRateLimiter(options =>
             partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
             factory: _ => new FixedWindowRateLimiterOptions
             {
-                PermitLimit = 10,
+                PermitLimit = defaultPermitLimit,
                 Window = TimeSpan.FromMinutes(1)
             }));
 });
