@@ -7,10 +7,12 @@ using Microsoft.AspNetCore.Identity;
 public class UserRepository : IUserRepository
 {
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly RoleManager<IdentityRole>? _roleManager;
 
-    public UserRepository(UserManager<ApplicationUser> userManager)
+    public UserRepository(UserManager<ApplicationUser> userManager, RoleManager<IdentityRole>? roleManager = null)
     {
         _userManager = userManager;
+        _roleManager = roleManager;
     }
 
     public async Task<ApplicationUser?> FindByEmailAsync(string email, CancellationToken cancellationToken = default)
@@ -37,6 +39,11 @@ public class UserRepository : IUserRepository
 
     public async Task<(bool Succeeded, IEnumerable<string> Errors)> AddToRoleAsync(ApplicationUser user, string role)
     {
+        if (_roleManager != null && !await _roleManager.RoleExistsAsync(role))
+        {
+            await _roleManager.CreateAsync(new IdentityRole(role));
+        }
+
         var result = await _userManager.AddToRoleAsync(user, role);
         return (result.Succeeded, result.Errors.Select(e => e.Description));
     }

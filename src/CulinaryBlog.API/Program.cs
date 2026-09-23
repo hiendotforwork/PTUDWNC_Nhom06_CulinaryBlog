@@ -18,14 +18,17 @@ using Scalar.AspNetCore;
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
+if (!builder.Environment.IsEnvironment("Testing"))
 {
-    if (!string.IsNullOrEmpty(connectionString))
+    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    builder.Services.AddDbContext<ApplicationDbContext>(options =>
     {
-        options.UseNpgsql(connectionString);
-    }
-});
+        if (!string.IsNullOrEmpty(connectionString))
+        {
+            options.UseNpgsql(connectionString);
+        }
+    });
+}
 
 // ASP.NET Core Identity Configuration
 builder.Services.AddIdentityCore<ApplicationUser>(options =>
