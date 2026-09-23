@@ -49,7 +49,7 @@ Tài liệu kết nối chính thức: https://supabase.com/docs/guides/database
 - Audit hiện đổi token entity được ghi. Quy tắc cập nhật token cha khi sửa con, kiểm tra quyền, publish đủ nguyên liệu/bước, renumber và chuyển ảnh chính trong transaction phải được triển khai trong các mutation handlers; chưa coi là đã có API hoàn chỉnh.
 - Tài khoản seed là dữ liệu giả, bị vô hiệu hóa và không có mật khẩu. Không dùng nó để chứng minh chức năng đăng nhập. Seed không ghi đè/xóa dữ liệu có sẵn; nếu dữ liệu mẫu bị sửa/xóa, verify sẽ báo thiếu thay vì âm thầm khôi phục.
 - Chưa tích hợp frontend với backend/Supabase. Frontend của thành viên khác không ghi là thành quả cá nhân của Chương.
-- Các file mới chưa commit/push tại thời điểm viết hướng dẫn. Trước nộp báo cáo cần đẩy phần đã kiểm chứng lên feature/chuong, kiểm tra link, rồi gửi PR khi nhóm cần dùng. Không gộp main trực tiếp.
+- Mã Lab 2 đã được commit/push: d030f6818660b322aa584d1741b2fe1f4c532796 trên feature/chuong (đã xác nhận bằng git ls-remote ngày 21/09/2026). Bản báo cáo và cập nhật hướng dẫn sau commit này cần commit riêng nếu muốn lưu trong Git. Chưa mở PR; không gộp main trực tiếp.
 
 ## Các commit có ý nghĩa đề xuất
 
