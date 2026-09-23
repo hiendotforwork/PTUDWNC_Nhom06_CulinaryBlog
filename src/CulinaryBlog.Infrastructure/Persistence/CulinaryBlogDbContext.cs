@@ -1,6 +1,7 @@
 using CulinaryBlog.Domain.Entities;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using NpgsqlTypes;
 using System.Security.Cryptography;
 
 namespace CulinaryBlog.Infrastructure.Persistence;
@@ -18,6 +19,7 @@ public sealed class CulinaryBlogDbContext(DbContextOptions<CulinaryBlogDbContext
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
+        builder.HasPostgresExtension("unaccent");
         // Separate from Supabase auth/storage/public schemas; access through .NET only.
         builder.HasDefaultSchema("culinary");
         // Limit this context to recipe mappings; assembly-wide scanning also loads auth mappings.
@@ -28,6 +30,15 @@ public sealed class CulinaryBlogDbContext(DbContextOptions<CulinaryBlogDbContext
         builder.ApplyConfiguration(new ImageConfiguration());
         builder.ApplyConfiguration(new UserConfiguration());
         builder.ApplyConfiguration(new RefreshTokenConfiguration());
+        if (Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
+        {
+            builder.Entity<Recipe>().Ignore("SearchVector");
+        }
+        else
+        {
+            builder.Entity<Recipe>().Property<NpgsqlTsVector>("SearchVector").HasColumnType("tsvector");
+            builder.Entity<Recipe>().HasIndex("SearchVector").HasDatabaseName("IX_Recipe_SearchVector").HasMethod("GIN");
+        }
     }
 
     private void Audit()
