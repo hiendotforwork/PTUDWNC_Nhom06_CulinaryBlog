@@ -21,6 +21,7 @@ public class TokenService : ITokenService
     public string GenerateAccessToken(ApplicationUser user, IList<string> roles)
     {
         var secretKey = _configuration["Jwt:Secret"] 
+            ?? _configuration["Jwt:AccessTokenSecret"]
             ?? throw new InvalidOperationException("JWT Secret is not configured.");
         var issuer = _configuration["Jwt:Issuer"] ?? "CulinaryBlog";
         var audience = _configuration["Jwt:Audience"] ?? "CulinaryBlogApp";
