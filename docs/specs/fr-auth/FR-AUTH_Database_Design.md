@@ -3,12 +3,15 @@
 **Version:** 1.0.0
 **Date:** 2026-09-11
 **Scope:** FR-AUTH Module Only
-**Target:** PostgreSQL 16 + ASP.NET Core Identity + EF Core
+**Target:** Supabase Database (PostgreSQL 16) + ASP.NET Core Identity + EF Core
+
+**Storage and Query Platform:** Supabase cung cấp PostgreSQL managed database.
+Backend truy vấn và ghi dữ liệu thông qua EF Core/Npgsql bằng connection string của Supabase;
+schema, migrations và các ràng buộc vẫn tuân theo PostgreSQL.
 
 ---
 
 ## 1. FR-AUTH Data Requirement Matrix
-
 
 | FR          | Data cần đọc                                                         | Data cần ghi                                                                          | Entity/Table liên quan                                        |
 | ----------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
@@ -20,11 +23,9 @@
 | FR-AUTH-006 | AspNetUsers, AspNetUserRoles, roleName                               | -                                                                                     | AspNetUsers, AspNetUserRoles, AspNetRoles                     |
 | FR-AUTH-007 | AspNetUsers (by UserId from JWT)                                     | displayName, avatarUrl                                                                | AspNetUsers                                                   |
 
-
 ---
 
 ## 2. Entity/Table Inventory
-
 
 | Table            | Purpose                                        | Source FR                                                       | Ownership             | Type              |
 | ---------------- | ---------------------------------------------- | --------------------------------------------------------------- | --------------------- | ----------------- |
@@ -34,7 +35,6 @@
 | AspNetUserLogins | External login providers (Google OAuth)        | FR-AUTH-003                                                     | ASP.NET Core Identity | Identity Standard |
 | AspNetUserTokens | OAuth tokens (nếu cần)                         | -                                                               | ASP.NET Core Identity | Identity Standard |
 | RefreshTokens    | Refresh tokens với rotation/revocation support | FR-AUTH-001, FR-AUTH-002, FR-AUTH-003, FR-AUTH-004, FR-AUTH-005 | FR-AUTH Module        | Custom            |
-
 
 **Decision:** [DERIVED] Sử dụng đầy đủ ASP.NET Core Identity tables vì:
 
@@ -49,7 +49,6 @@
 
 ### 3.1 AspNetUsers (Extended Identity)
 
-
 | Column               | Type         | Nullable | PK  | FK  | Unique | Default | Description                                         | FR                                    |
 | -------------------- | ------------ | -------- | --- | --- | ------ | ------- | --------------------------------------------------- | ------------------------------------- |
 | Id                   | varchar(450) | NO       | YES | -   | -      | -       | Primary key (string for Identity compatibility)     | ALL                                   |
@@ -62,6 +61,7 @@
 | NormalizedUserName   | varchar(256) | YES      | -   | -   | YES    | -       | Identity: normalized username                       | Identity                              |
 | Email                | varchar(256) | YES      | -   | -   | YES    | -       | Identity: Email                                     | FR-AUTH-001, FR-AUTH-002, FR-AUTH-003 |
 | NormalizedEmail      | varchar(256) | YES      | -   | -   | YES    | -       | Identity: normalized email                          | Identity                              |
+| EmailConfirmed       | boolean      | NO       | -   | -   | -      | FALSE   | Identity: Email đã được xác nhận (FR-AUTH-006)      | FR-AUTH-006                           |
 | PasswordHash         | varchar(500) | YES      | -   | -   | -      | -       | Identity: PBKDF2 hash                               | FR-AUTH-002                           |
 | SecurityStamp        | varchar(500) | YES      | -   | -   | -      | -       | Identity: security stamp (change on password reset) | Identity                              |
 | ConcurrencyStamp     | varchar(500) | YES      | -   | -   | -      | -       | Identity: concurrency token                         | Identity                              |
@@ -72,7 +72,6 @@
 | LockoutEnd           | timestamptz  | YES      | -   | -   | -      | NULL    | Identity: Lockout end time                          | FR-AUTH-002                           |
 | LockoutEnabled       | boolean      | NO       | -   | -   | -      | TRUE    | Identity: Lockout enabled                           | FR-AUTH-002                           |
 | AccessFailedCount    | integer      | NO       | -   | -   | -      | 0       | Identity: Số lần đăng nhập thất bại                 | FR-AUTH-002                           |
-
 
 **Notes:**
 
@@ -85,14 +84,12 @@
 
 ### 3.2 AspNetRoles
 
-
 | Column           | Type         | Nullable | PK  | FK  | Unique | Default | Description       | FR                                    |
 | ---------------- | ------------ | -------- | --- | --- | ------ | ------- | ----------------- | ------------------------------------- |
 | Id               | varchar(450) | NO       | YES | -   | -      | -       | Primary key       | FR-AUTH-006                           |
 | Name             | varchar(256) | YES      | -   | -   | YES    | -       | Tên role          | FR-AUTH-001, FR-AUTH-003, FR-AUTH-006 |
 | NormalizedName   | varchar(256) | YES      | -   | -   | YES    | -       | Normalized name   | Identity                              |
 | ConcurrencyStamp | varchar(500) | YES      | -   | -   | -      | -       | Concurrency token | Identity                              |
-
 
 **Notes:**
 
@@ -103,12 +100,10 @@
 
 ### 3.3 AspNetUserRoles (Join Table)
 
-
 | Column | Type         | Nullable | PK              | FK                   | Unique | Default | Description | FR                                    |
 | ------ | ------------ | -------- | --------------- | -------------------- | ------ | ------- | ----------- | ------------------------------------- |
 | UserId | varchar(450) | NO       | YES (composite) | YES → AspNetUsers.Id | -      | -       | FK to User  | FR-AUTH-001, FR-AUTH-003, FR-AUTH-006 |
 | RoleId | varchar(450) | NO       | YES (composite) | YES → AspNetRoles.Id | -      | -       | FK to Role  | FR-AUTH-001, FR-AUTH-003, FR-AUTH-006 |
-
 
 **Notes:**
 
@@ -119,14 +114,12 @@
 
 ### 3.4 AspNetUserLogins
 
-
 | Column              | Type         | Nullable | PK              | FK                   | Unique | Default | Description                            | FR          |
 | ------------------- | ------------ | -------- | --------------- | -------------------- | ------ | ------- | -------------------------------------- | ----------- |
 | LoginProvider       | varchar(450) | NO       | YES (composite) | -                    | -      | -       | Provider name (e.g., "Google")         | FR-AUTH-003 |
 | ProviderKey         | varchar(450) | NO       | YES (composite) | -                    | -      | -       | Provider-specific key (Google user ID) | FR-AUTH-003 |
 | ProviderDisplayName | varchar(450) | YES      | -               | -                    | -      | NULL    | Display name của provider              | FR-AUTH-003 |
 | UserId              | varchar(450) | NO       | -               | YES → AspNetUsers.Id | -      | -       | FK to User                             | FR-AUTH-003 |
-
 
 **Notes:**
 
@@ -140,7 +133,6 @@
 
 ### 3.5 RefreshTokens
 
-
 | Column              | Type         | Nullable | PK  | FK                   | Unique | Default           | Description                               | FR                                                              |
 | ------------------- | ------------ | -------- | --- | -------------------- | ------ | ----------------- | ----------------------------------------- | --------------------------------------------------------------- |
 | Id                  | uuid         | NO       | YES | -                    | -      | gen_random_uuid() | Primary key                               | FR-AUTH-001, FR-AUTH-002, FR-AUTH-003, FR-AUTH-004              |
@@ -151,7 +143,6 @@
 | ReplacedByTokenHash | varchar(64)  | YES      | -   | -                    | -      | NULL              | Hash của token thay thế (token rotation)  | FR-AUTH-004                                                     |
 | CreatedAt           | timestamptz  | NO       | -   | -                    | -      | NOW()             | Thời điểm tạo token                       | FR-AUTH-001, FR-AUTH-002, FR-AUTH-003                           |
 | CreatedByIp         | varchar(45)  | YES      | -   | -                    | -      | NULL              | IP address tạo token (audit)              | FR-AUTH-001, FR-AUTH-002, FR-AUTH-003                           |
-
 
 **Notes:**
 
@@ -231,7 +222,6 @@
 
 ### 4.1 Relationship Details
 
-
 | Relationship         | Type | From           | To                      | Cascade        | Notes                         |
 | -------------------- | ---- | -------------- | ----------------------- | -------------- | ----------------------------- |
 | User → UserRoles     | 1:N  | AspNetUsers.Id | AspNetUserRoles.UserId  | Cascade Delete | User có nhiều roles           |
@@ -239,7 +229,6 @@
 | User → RefreshTokens | 1:N  | AspNetUsers.Id | RefreshTokens.UserId    | Cascade Delete | User có nhiều refresh tokens  |
 | User → UserLogins    | 1:N  | AspNetUsers.Id | AspNetUserLogins.UserId | Cascade Delete | User có nhiều external logins |
 | User → UserClaims    | 1:N  | AspNetUsers.Id | AspNetUserClaims.UserId | Cascade Delete | Không cần cho FR-AUTH         |
-
 
 ---
 
@@ -252,6 +241,7 @@ erDiagram
         string Email "Unique, nullable"
         string UserName "Unique, nullable"
         string PasswordHash "PBKDF2 hash"
+        bool EmailConfirmed "NOT NULL, default FALSE (FR-AUTH-006)"
         string DisplayName "NOT NULL"
         string AvatarUrl "nullable"
         text Bio "nullable"
@@ -298,12 +288,12 @@ erDiagram
 
 ---
 
-## 6. PostgreSQL DDL
+## 6. Supabase PostgreSQL DDL
 
 ```sql
 -- ============================================================================
 -- FR-AUTH Database Schema for Culinary Blog
--- PostgreSQL 16
+-- Supabase Database (PostgreSQL 16)
 -- ============================================================================
 
 -- Enable required extensions
@@ -337,12 +327,13 @@ CREATE UNIQUE INDEX "RoleNameIndex"
 CREATE TABLE "AspNetUsers" (
     -- Primary Key
     "Id" varchar(450) NOT NULL,
-    
+
     -- Standard Identity Columns
     "UserName" varchar(256) NULL,
     "NormalizedUserName" varchar(256) NULL,
     "Email" varchar(256) NULL,
     "NormalizedEmail" varchar(256) NULL,
+    "EmailConfirmed" boolean NOT NULL DEFAULT FALSE,
     "PasswordHash" varchar(500) NULL,
     "SecurityStamp" varchar(500) NULL,
     "ConcurrencyStamp" varchar(500) NULL,
@@ -353,14 +344,14 @@ CREATE TABLE "AspNetUsers" (
     "LockoutEnd" timestamptz NULL,
     "LockoutEnabled" boolean NOT NULL DEFAULT TRUE,
     "AccessFailedCount" integer NOT NULL DEFAULT 0,
-    
+
     -- Custom Columns (FR-AUTH specific)
     "DisplayName" varchar(100) NOT NULL,
     "AvatarUrl" varchar(500) NULL,
     "Bio" text NULL,
     "IsActive" boolean NOT NULL DEFAULT TRUE,
     "CreatedAt" timestamptz NOT NULL DEFAULT NOW(),
-    
+
     CONSTRAINT "PK_AspNetUsers" PRIMARY KEY ("Id")
 );
 
@@ -428,22 +419,22 @@ CREATE INDEX "IX_AspNetUserLogins_UserId"
 CREATE TABLE "RefreshTokens" (
     -- Primary Key
     "Id" uuid NOT NULL DEFAULT gen_random_uuid(),
-    
+
     -- User Association
     "UserId" varchar(450) NOT NULL,
-    
+
     -- Token Data (stored as hash for security)
     "TokenHash" varchar(64) NOT NULL,
-    
+
     -- Token Lifecycle
     "ExpiresAt" timestamptz NOT NULL,
     "RevokedAt" timestamptz NULL,
     "ReplacedByTokenHash" varchar(64) NULL,
-    
+
     -- Audit
     "CreatedAt" timestamptz NOT NULL DEFAULT NOW(),
     "CreatedByIp" varchar(45) NULL,
-    
+
     CONSTRAINT "PK_RefreshTokens" PRIMARY KEY ("Id"),
     CONSTRAINT "FK_RefreshTokens_AspNetUsers_UserId"
         FOREIGN KEY ("UserId") REFERENCES "AspNetUsers" ("Id")
@@ -502,7 +493,7 @@ BEGIN
         INSERT INTO "AspNetRoles" ("Id", "Name", "NormalizedName", "ConcurrencyStamp")
         VALUES ('role-author', 'Author', 'AUTHOR', gen_random_uuid());
     END IF;
-    
+
     IF NOT EXISTS (SELECT 1 FROM "AspNetRoles" WHERE "Id" = 'role-admin') THEN
         INSERT INTO "AspNetRoles" ("Id", "Name", "NormalizedName", "ConcurrencyStamp")
         VALUES ('role-admin', 'Admin', 'ADMIN', gen_random_uuid());
@@ -553,22 +544,22 @@ public class ApplicationUser : IdentityUser<string>
 {
     // Custom properties for FR-AUTH
     public string DisplayName { get; set; } = string.Empty;
-    
+
     public string? AvatarUrl { get; set; }
-    
+
     public string? Bio { get; set; }
-    
+
     public bool IsActive { get; set; } = true;
-    
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    
+
     // Navigation properties
     public virtual ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
-    
+
     public virtual ICollection<IdentityUserRole<string>> UserRoles { get; set; } = new List<IdentityUserRole<string>>();
-    
+
     public virtual ICollection<IdentityUserLogin<string>> Logins { get; set; } = new List<IdentityUserLogin<string>>();
-    
+
     // Factory method for creating new users
     public static ApplicationUser Create(string displayName, string email, string userName)
     {
@@ -599,31 +590,31 @@ using System.Security.Cryptography;
 public class RefreshToken
 {
     public Guid Id { get; set; } = Guid.NewGuid();
-    
+
     public string UserId { get; set; } = string.Empty;
-    
+
     public string TokenHash { get; set; } = string.Empty;
-    
+
     public DateTime ExpiresAt { get; set; }
-    
+
     public DateTime? RevokedAt { get; set; }
-    
+
     public string? ReplacedByTokenHash { get; set; }
-    
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    
+
     public string? CreatedByIp { get; set; }
-    
+
     // Navigation
     public virtual ApplicationUser User { get; set; } = null!;
-    
+
     // Computed properties
     public bool IsExpired => DateTime.UtcNow > ExpiresAt;
-    
+
     public bool IsRevoked => RevokedAt.HasValue;
-    
+
     public bool IsActive => !IsExpired && !IsRevoked;
-    
+
     // Factory method
     public static RefreshToken Create(string userId, string rawToken, string? ipAddress = null)
     {
@@ -637,14 +628,14 @@ public class RefreshToken
             CreatedByIp = ipAddress
         };
     }
-    
+
     // Hash token using SHA-256
     public static string HashToken(string token)
     {
         var bytes = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(token));
         return Convert.ToHexString(bytes).ToLowerInvariant();
     }
-    
+
     // Revoke this token and specify replacement
     public void Revoke(string replacedByTokenHash)
     {
@@ -669,46 +660,46 @@ public class ApplicationUserConfiguration : IEntityTypeConfiguration<Application
     public void Configure(EntityTypeBuilder<ApplicationUser> builder)
     {
         builder.ToTable("AspNetUsers");
-        
+
         // Primary key
         builder.HasKey(u => u.Id);
-        
+
         // Custom columns
         builder.Property(u => u.DisplayName)
             .IsRequired()
             .HasMaxLength(100);
-        
+
         builder.Property(u => u.AvatarUrl)
             .HasMaxLength(500);
-        
+
         builder.Property(u => u.Bio)
             .HasColumnType("text");
-        
+
         builder.Property(u => u.IsActive)
             .HasDefaultValue(true);
-        
+
         builder.Property(u => u.CreatedAt)
             .HasDefaultValueSql("NOW()");
-        
+
         // Unique constraints
         builder.HasIndex(u => u.NormalizedUserName)
             .IsUnique()
             .HasDatabaseName("UserNameIndex");
-        
+
         builder.HasIndex(u => u.NormalizedEmail)
             .IsUnique()
             .HasDatabaseName("EmailIndex");
-        
+
         // Index for login queries
         builder.HasIndex(u => u.Email)
             .HasDatabaseName("IX_AspNetUsers_Email");
-        
+
         // Navigation properties
         builder.HasMany(u => u.RefreshTokens)
             .WithOne(rt => rt.User)
             .HasForeignKey(rt => rt.UserId)
             .OnDelete(DeleteBehavior.Cascade);
-        
+
         builder.HasMany(u => u.Logins)
             .WithOne(l => l.User)
             .HasForeignKey(l => l.UserId)
@@ -730,47 +721,47 @@ public class RefreshTokenConfiguration : IEntityTypeConfiguration<RefreshToken>
     public void Configure(EntityTypeBuilder<RefreshToken> builder)
     {
         builder.ToTable("RefreshTokens");
-        
+
         // Primary key
         builder.HasKey(rt => rt.Id);
-        
+
         builder.Property(rt => rt.Id)
             .HasDefaultValueSql("gen_random_uuid()");
-        
+
         // Token hash (unique)
         builder.Property(rt => rt.TokenHash)
             .IsRequired()
             .HasMaxLength(64);
-        
+
         builder.HasIndex(rt => rt.TokenHash)
             .IsUnique()
             .HasDatabaseName("IX_RefreshTokens_TokenHash");
-        
+
         // UserId index
         builder.HasIndex(rt => rt.UserId)
             .HasDatabaseName("IX_RefreshTokens_UserId");
-        
+
         // Composite index for finding active tokens
         builder.HasIndex(rt => new { rt.UserId, rt.ExpiresAt, rt.RevokedAt })
             .HasDatabaseName("IX_RefreshTokens_ActiveTokens")
             .HasFilter("\"RevokedAt\" IS NULL");
-        
+
         // ExpiresAt
         builder.Property(rt => rt.ExpiresAt)
             .IsRequired();
-        
+
         // ReplacedByTokenHash
         builder.Property(rt => rt.ReplacedByTokenHash)
             .HasMaxLength(64);
-        
+
         // CreatedAt
         builder.Property(rt => rt.CreatedAt)
             .HasDefaultValueSql("NOW()");
-        
+
         // CreatedByIp
         builder.Property(rt => rt.CreatedByIp)
             .HasMaxLength(45); // IPv6 max length
-        
+
         // Relationships
         builder.HasOne(rt => rt.User)
             .WithMany(u => u.RefreshTokens)
@@ -793,10 +784,10 @@ public class IdentityRoleConfiguration : IEntityTypeConfiguration[[ORCA_RICH_MD:
     public void Configure(EntityTypeBuilder[[ORCA_RICH_MD:a8d44379be599638b32c8a762e8db201:inline-html:%3CIdentityRole%3E]] builder)
     {
         builder.ToTable("AspNetRoles");
-        
+
         // Primary key
         builder.HasKey(r => r.Id);
-        
+
         // Role name unique
         builder.HasIndex(r => r.NormalizedName)
             .IsUnique()
@@ -818,10 +809,10 @@ public class IdentityUserRoleConfiguration : IEntityTypeConfiguration<IdentityUs
     public void Configure(EntityTypeBuilder<IdentityUserRole<string>> builder)
     {
         builder.ToTable("AspNetUserRoles");
-        
+
         // Composite primary key
         builder.HasKey(ur => new { ur.UserId, ur.RoleId });
-        
+
         // Indexes
         builder.HasIndex(ur => ur.RoleId)
             .HasDatabaseName("IX_AspNetUserRoles_RoleId");
@@ -842,10 +833,10 @@ public class IdentityUserLoginConfiguration : IEntityTypeConfiguration<IdentityU
     public void Configure(EntityTypeBuilder<IdentityUserLogin<string>> builder)
     {
         builder.ToTable("AspNetUserLogins");
-        
+
         // Composite primary key
         builder.HasKey(l => new { l.LoginProvider, l.ProviderKey });
-        
+
         // Index
         builder.HasIndex(l => l.UserId)
             .HasDatabaseName("IX_AspNetUserLogins_UserId");
@@ -867,23 +858,23 @@ public class CulinaryBlogDbContext : IdentityDbContext[[ORCA_RICH_MD:a8d44379be5
 {
     // RefreshToken DbSet
     public DbSet[[ORCA_RICH_MD:a8d44379be599638b32c8a762e8db201:inline-html:%3CRefreshToken%3E]] RefreshTokens => Set[[ORCA_RICH_MD:a8d44379be599638b32c8a762e8db201:inline-html:%3CRefreshToken%3E]]();
-    
+
     public CulinaryBlogDbContext(DbContextOptions[[ORCA_RICH_MD:a8d44379be599638b32c8a762e8db201:inline-html:%3CCulinaryBlogDbContext%3E]] options)
         : base(options)
     {
     }
-    
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
-        
+
         // Apply configurations
         builder.ApplyConfiguration(new ApplicationUserConfiguration());
         builder.ApplyConfiguration(new RefreshTokenConfiguration());
         builder.ApplyConfiguration(new IdentityRoleConfiguration());
         builder.ApplyConfiguration(new IdentityUserRoleConfiguration());
         builder.ApplyConfiguration(new IdentityUserLoginConfiguration());
-        
+
         // Seed default roles
         builder.Entity[[ORCA_RICH_MD:a8d44379be599638b32c8a762e8db201:inline-html:%3CIdentityRole%3E]]().HasData(
             new IdentityRole
@@ -922,15 +913,15 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     options.Password.RequireUppercase = true;
     options.Password.RequireNonAlphanumeric = true;
     options.Password.RequiredUniqueChars = 1;
-    
+
     // Lockout settings (FR-AUTH-002)
     options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
     options.Lockout.MaxFailedAccessAttempts = 5;
     options.Lockout.AllowedForNewUsers = true;
-    
+
     // User settings
     options.User.RequireUniqueEmail = true;
-    
+
     // SignIn settings
     options.SignIn.RequireConfirmedAccount = false; // TODO: implement email confirmation
     options.SignIn.RequireConfirmedEmail = false;
@@ -952,7 +943,6 @@ builder.Services.Configure<IdentityOptions>(options =>
 
 ### 8.1 Password Security
 
-
 | Aspect            | Implementation                            | Standard                  |
 | ----------------- | ----------------------------------------- | ------------------------- |
 | Hashing Algorithm | PBKDF2-HMACSHA512                         | [REQUIREMENT] NFR-SEC-001 |
@@ -960,7 +950,6 @@ builder.Services.Configure<IdentityOptions>(options =>
 | Storage           | PasswordHash column (managed by Identity) | ASP.NET Core Identity     |
 | Plaintext         | NEVER stored                              | [REQUIREMENT]             |
 | Verification      | UserManager.CheckPasswordAsync()          | ASP.NET Core Identity     |
-
 
 **Notes:**
 
@@ -970,7 +959,6 @@ builder.Services.Configure<IdentityOptions>(options =>
 
 ### 8.2 Refresh Token Security
 
-
 | Aspect          | Implementation                      | Standard                  |
 | --------------- | ----------------------------------- | ------------------------- |
 | Storage         | SHA-256 Hash                        | [PROPOSAL]                |
@@ -979,7 +967,6 @@ builder.Services.Configure<IdentityOptions>(options =>
 | Reuse Detection | Check if revoked token is used      | [REQUIREMENT] FR-AUTH-004 |
 | Expiration      | 7 days                              | [REQUIREMENT] FR-AUTH-004 |
 | Revocation      | IsRevoked + RevokedAt               | [REQUIREMENT] FR-AUTH-005 |
-
 
 **Token Hashing Process:**
 
@@ -999,7 +986,6 @@ var stored = await _context.RefreshTokens
 
 ### 8.3 Account Security
 
-
 | Feature             | Implementation        | FR                        |
 | ------------------- | --------------------- | ------------------------- |
 | Lockout             | LockoutEnd &gt; NOW() | FR-AUTH-002               |
@@ -1007,9 +993,7 @@ var stored = await _context.RefreshTokens
 | Lockout Duration    | 15 minutes            | [REQUIREMENT] FR-AUTH-002 |
 | Account Active      | IsActive = true       | FR-AUTH-002               |
 
-
 ### 8.4 OAuth Security (Google)
-
 
 | Aspect       | Implementation             | Standard                  |
 | ------------ | -------------------------- | ------------------------- |
@@ -1018,9 +1002,7 @@ var stored = await _context.RefreshTokens
 | Storage      | AspNetUserLogins           | ASP.NET Core Identity     |
 | Provider Key | Google User ID (sub claim) | [REQUIREMENT] FR-AUTH-003 |
 
-
 ### 8.5 Sensitive Data Exposure
-
 
 | Data              | Exposed via API?    | Protected How                  |
 | ----------------- | ------------------- | ------------------------------ |
@@ -1032,11 +1014,9 @@ var stored = await _context.RefreshTokens
 | AccessFailedCount | NO                  | Used internally only           |
 | LockoutEnd        | YES (kèm thông báo) | Public endpoint response       |
 
-
 ---
 
 ## 9. FR Traceability
-
 
 | Table/Column         | FR-AUTH                                            | Requirement              |
 | -------------------- | -------------------------------------------------- | ------------------------ |
@@ -1044,6 +1024,7 @@ var stored = await _context.RefreshTokens
 | Id                   | ALL                                                | User identifier          |
 | Email                | FR-AUTH-001, FR-AUTH-002, FR-AUTH-003, FR-AUTH-006 | Login, unique identifier |
 | UserName             | FR-AUTH-001, FR-AUTH-006                           | Display identifier       |
+| EmailConfirmed       | FR-AUTH-006                                       | Email verification status|
 | PasswordHash         | FR-AUTH-002                                        | Password verification    |
 | DisplayName          | FR-AUTH-001, FR-AUTH-006, FR-AUTH-007              | Public display name      |
 | AvatarUrl            | FR-AUTH-001, FR-AUTH-006, FR-AUTH-007              | Profile image            |
@@ -1072,13 +1053,11 @@ var stored = await _context.RefreshTokens
 | CreatedAt            | FR-AUTH-001, FR-AUTH-002, FR-AUTH-003              | Audit                    |
 | CreatedByIp          | FR-AUTH-001, FR-AUTH-002, FR-AUTH-003              | IP audit                 |
 
-
 ---
 
 ## 10. Scope Validation
 
 ### 10.1 Tables Included (FR-AUTH only)
-
 
 | Table            | Justification                                                             |
 | ---------------- | ------------------------------------------------------------------------- |
@@ -1088,9 +1067,7 @@ var stored = await _context.RefreshTokens
 | AspNetUserLogins | [REQUIREMENT] Google OAuth for FR-AUTH-003                                |
 | RefreshTokens    | [REQUIREMENT] Token rotation for FR-AUTH-004, FR-AUTH-005                 |
 
-
 ### 10.2 Tables NOT Included
-
 
 | Table             | Reason                                       |
 | ----------------- | -------------------------------------------- |
@@ -1105,23 +1082,19 @@ var stored = await _context.RefreshTokens
 | RecipeImages      | Belongs to FR-RCP module                     |
 | Any other tables  | Outside FR-AUTH scope                        |
 
-
 ### 10.3 FR Coverage Check
-
 
 | FR          | Supported? | Implementation                                                |
 | ----------- | ---------- | ------------------------------------------------------------- |
-| FR-AUTH-001 | ✅          | AspNetUsers, AspNetUserRoles, RefreshTokens                   |
-| FR-AUTH-002 | ✅          | AspNetUsers (lockout), RefreshTokens                          |
-| FR-AUTH-003 | ✅          | AspNetUsers, AspNetUserLogins, AspNetUserRoles, RefreshTokens |
-| FR-AUTH-004 | ✅          | RefreshTokens (rotation, revocation)                          |
-| FR-AUTH-005 | ✅          | RefreshTokens (revocation)                                    |
-| FR-AUTH-006 | ✅          | AspNetUsers, AspNetUserRoles, AspNetRoles                     |
-| FR-AUTH-007 | ✅          | AspNetUsers (DisplayName, AvatarUrl)                          |
-
+| FR-AUTH-001 | ✅         | AspNetUsers, AspNetUserRoles, RefreshTokens                   |
+| FR-AUTH-002 | ✅         | AspNetUsers (lockout), RefreshTokens                          |
+| FR-AUTH-003 | ✅         | AspNetUsers, AspNetUserLogins, AspNetUserRoles, RefreshTokens |
+| FR-AUTH-004 | ✅         | RefreshTokens (rotation, revocation)                          |
+| FR-AUTH-005 | ✅         | RefreshTokens (revocation)                                    |
+| FR-AUTH-006 | ✅         | AspNetUsers, AspNetUserRoles, AspNetRoles                     |
+| FR-AUTH-007 | ✅         | AspNetUsers (DisplayName, AvatarUrl)                          |
 
 ### 10.4 Coupling Analysis
-
 
 | Dependency                        | Type | Justification         |
 | --------------------------------- | ---- | --------------------- |
@@ -1130,7 +1103,6 @@ var stored = await _context.RefreshTokens
 | AspNetUsers.Id → AspNetUserRoles  | 1:N  | FR-AUTH internal only |
 | AspNetRoles.Id → AspNetUserRoles  | 1:N  | FR-AUTH internal only |
 
-
 **Conclusion:** No coupling with other modules. All relationships are within FR-AUTH scope.
 
 ---
@@ -1138,7 +1110,6 @@ var stored = await _context.RefreshTokens
 ## 11. Open Questions &amp; Assumptions
 
 ### Assumptions [ASSUMPTION]
-
 
 | ID  | Assumption                              | Rationale                                                   |
 | --- | --------------------------------------- | ----------------------------------------------------------- |
@@ -1150,30 +1121,24 @@ var stored = await _context.RefreshTokens
 | A6  | Google ProviderKey = Google "sub" claim | Standard OAuth 2.0                                          |
 | A7  | RefreshToken.Id = UUID                  | Đủ unique, không cần sequential                             |
 
-
 ### Unknowns [UNKNOWN]
-
 
 | ID  | Unknown                                          | Impact                      |
 | --- | ------------------------------------------------ | --------------------------- |
 | U1  | Có cần AspNetUserClaims cho FR khác không?       | Nếu có, cần bổ sung table   |
 | U2  | Có cần device tracking cho refresh tokens không? | Chỉ có CreatedByIp hiện tại |
 
-
 ### Conflicts [CONFLICT]
-
 
 | ID  | Conflict                                                                                 | Resolution                                                                          |
 | --- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | C1  | SRS Section 7.7 nói ApplicationUser extends IdentityUser nhưng không nói cụ thể key type | [DERIVED] Sử dụng string key vì đây là standard ASP.NET Core Identity configuration |
-
 
 ---
 
 ## 12. Summary
 
 ### Database Design for FR-AUTH Complete
-
 
 | Aspect             | Result                                  |
 | ------------------ | --------------------------------------- |
@@ -1185,20 +1150,25 @@ var stored = await _context.RefreshTokens
 | Foreign Keys       | 5                                       |
 | FR Coverage        | 100% (7/7 FRs)                          |
 
-
 ### Key Design Decisions
 
 1. **ASP.NET Core Identity Integration**
-  - Sử dụng đầy đủ Identity infrastructure
-  - Chỉ thêm custom columns cần thiết cho FR-AUTH
-2. **RefreshToken Hashing**
-  - Lưu SHA-256 hash thay vì plaintext
-  - Hỗ trợ token rotation và reuse detection
-3. **No Unnecessary Entities**
-  - Không tạo UserRole riêng (dùng Identity)
-  - Không tạo GoogleLogin riêng (dùng Identity)
-  - Không tạo RefreshToken riêng nếu không cần rotation
-4. **Scope Isolation**
-  - Không có foreign key đến modules khác
-  - FR-AUTH hoàn toàn độc lập về database
 
+- Sử dụng đầy đủ Identity infrastructure
+- Chỉ thêm custom columns cần thiết cho FR-AUTH
+
+2. **RefreshToken Hashing**
+
+- Lưu SHA-256 hash thay vì plaintext
+- Hỗ trợ token rotation và reuse detection
+
+3. **No Unnecessary Entities**
+
+- Không tạo UserRole riêng (dùng Identity)
+- Không tạo GoogleLogin riêng (dùng Identity)
+- Không tạo RefreshToken riêng nếu không cần rotation
+
+4. **Scope Isolation**
+
+- Không có foreign key đến modules khác
+- FR-AUTH hoàn toàn độc lập về database

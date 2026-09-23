@@ -1,3 +1,7 @@
+// Tệp này hiển thị vùng chọn và xem trước ảnh trong form công thức.
+// Chức năng: chọn ảnh (handleFiles), đặt ảnh đại diện (setPrimaryImage), xóa ảnh (removeImage),
+// và render vùng quản lý ảnh (ImageUploadZone).
+
 "use client";
 
 import React, { useRef, useState } from "react";
@@ -11,6 +15,8 @@ export interface ImageUploadZoneProps {
   maxImages?: number;
 }
 
+// Chức năng: hiển thị giao diện upload và quản lý danh sách ảnh.
+// Input: images, onImagesChange và maxImages. Output: React component vùng upload ảnh.
 export const ImageUploadZone: React.FC<ImageUploadZoneProps> = ({
   images,
   onChange,
@@ -20,16 +26,18 @@ export const ImageUploadZone: React.FC<ImageUploadZoneProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Chức năng: kiểm tra định dạng, kích thước và thêm các ảnh hợp lệ.
+  // Input: files - danh sách tệp người dùng chọn. Output: cập nhật images qua callback.
   const handleFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return;
     setErrorMessage(null);
 
-    const validExtensions = ["image/jpeg", "image/png", "image/webp", "image/avif"];
+    const validExtensions = ["image/jpeg", "image/png", "image/webp"];
     const newImageList: RecipeImage[] = [...images];
 
     Array.from(files).forEach((file) => {
       if (!validExtensions.includes(file.type)) {
-        setErrorMessage("Chỉ hỗ trợ định dạng JPG, PNG, WEBP, hoặc AVIF.");
+        setErrorMessage("Chỉ hỗ trợ định dạng JPG, PNG hoặc WEBP.");
         return;
       }
       if (file.size > 5 * 1024 * 1024) {
@@ -48,6 +56,7 @@ export const ImageUploadZone: React.FC<ImageUploadZoneProps> = ({
           id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           url,
           isPrimary: newImageList.length === 0, // First image is primary by default
+          file,
         };
         newImageList.push(newImg);
         onChange([...newImageList]);
@@ -56,6 +65,8 @@ export const ImageUploadZone: React.FC<ImageUploadZoneProps> = ({
     });
   };
 
+  // Chức năng: đánh dấu một ảnh làm ảnh đại diện trong form.
+  // Input: id - mã ảnh. Output: danh sách ảnh đã cập nhật qua callback.
   const setPrimaryImage = (id: string) => {
     const updated = images.map((img) => ({
       ...img,
@@ -64,6 +75,8 @@ export const ImageUploadZone: React.FC<ImageUploadZoneProps> = ({
     onChange(updated);
   };
 
+  // Chức năng: xóa một ảnh khỏi form và chọn ảnh đại diện thay thế khi cần.
+  // Input: id - mã ảnh cần xóa. Output: danh sách ảnh đã cập nhật qua callback.
   const removeImage = (id: string) => {
     const remaining = images.filter((img) => img.id !== id);
     if (remaining.length > 0 && !remaining.some((img) => img.isPrimary)) {
@@ -96,7 +109,7 @@ export const ImageUploadZone: React.FC<ImageUploadZoneProps> = ({
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/jpeg,image/png,image/webp,image/avif"
+          accept="image/jpeg,image/png,image/webp"
           multiple
           onChange={(e) => handleFiles(e.target.files)}
           className="hidden"
