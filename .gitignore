@@ -178,3 +178,4 @@ temp/
 #============================================================
 output/
 src/CulinaryBlog.API/wwwroot/uploads/
+.superpowers/
