@@ -234,26 +234,67 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await reloadRecipes();
     showToast("success", "Đã cập nhật công thức thành công!");
   };
+  // Chức năng: lấy thông báo từ lỗi API để hiển thị toast an toàn.
+  // Input: error và thông báo fallback. Output: chuỗi thông báo dễ hiểu.
+  const mutationErrorMessage = (error: unknown, fallback: string) => {
+    if (error instanceof Error) return error.message;
+    if (typeof error === "object" && error !== null && "message" in error) {
+      const message = (error as { message?: unknown }).message;
+      if (typeof message === "string" && message.trim()) return message;
+    }
+    return fallback;
+  };
+
   // Chức năng: xóa mềm công thức hiện tại.
   // Input: id - mã công thức. Output: Promise hoàn tất sau khi tải lại danh sách.
   const deleteRecipe = async (id: string) => {
-    const current = recipes.find((x) => x.id === id); if (!current?.rowVersion) return;
-    await deleteRecipeApi(id, current.rowVersion); await reloadRecipes(); showToast("info", "Đã xóa công thức");
+    const current = recipes.find((x) => x.id === id);
+    if (!current?.rowVersion) return;
+    try {
+      await deleteRecipeApi(id, current.rowVersion);
+      await reloadRecipes();
+      showToast("info", "Đã xóa công thức");
+    } catch (error: unknown) {
+      showToast("error", mutationErrorMessage(error, "Không thể xóa công thức."));
+    }
   };
 
-  // Chức năng: chuyển đổi giữa trạng thái xuất bản và bản nháp.
+  // Chức năng: xuất bản, hủy xuất bản; công thức lưu trữ sẽ được khôi phục trước khi xuất bản.
   // Input: id - mã công thức. Output: Promise hoàn tất sau khi cập nhật.
   const publishRecipe = async (id: string) => {
-    const current = recipes.find((x) => x.id === id); if (!current?.rowVersion) return;
-    await mutateRecipe(id, current.status === "Published" ? "unpublish" : "publish", current.rowVersion); await reloadRecipes();
-    showToast("success", current.status === "Published" ? "Đã hủy xuất bản" : "Công thức đã được xuất bản công khai!");
+    const current = recipes.find((x) => x.id === id);
+    if (!current?.rowVersion) return;
+    try {
+      if (current.status === "Archived") {
+        const restored = await mutateRecipe(id, "unarchive", current.rowVersion);
+        await mutateRecipe(id, "publish", restored.rowVersion);
+        showToast("success", "Đã khôi phục và xuất bản lại công thức!");
+      } else if (current.status === "Published") {
+        await mutateRecipe(id, "unpublish", current.rowVersion);
+        showToast("success", "Đã hủy xuất bản");
+      } else {
+        await mutateRecipe(id, "publish", current.rowVersion);
+        showToast("success", "Công thức đã được xuất bản công khai!");
+      }
+      await reloadRecipes();
+    } catch (error: unknown) {
+      showToast("error", mutationErrorMessage(error, "Không thể cập nhật trạng thái xuất bản."));
+    }
   };
 
   // Chức năng: chuyển đổi giữa trạng thái lưu trữ và bản nháp.
   // Input: id - mã công thức. Output: Promise hoàn tất sau khi cập nhật.
   const archiveRecipe = async (id: string) => {
-    const current = recipes.find((x) => x.id === id); if (!current?.rowVersion) return;
-    await mutateRecipe(id, current.status === "Archived" ? "unarchive" : "archive", current.rowVersion); await reloadRecipes(); showToast("warning", "Đã cập nhật trạng thái lưu trữ");
+    const current = recipes.find((x) => x.id === id);
+    if (!current?.rowVersion) return;
+    try {
+      const restoring = current.status === "Archived";
+      await mutateRecipe(id, restoring ? "unarchive" : "archive", current.rowVersion);
+      await reloadRecipes();
+      showToast("warning", restoring ? "Đã khôi phục công thức về bản nháp" : "Đã lưu trữ công thức");
+    } catch (error: unknown) {
+      showToast("error", mutationErrorMessage(error, "Không thể cập nhật trạng thái lưu trữ."));
+    }
   };
   const login = (email: string) => {
     const found = MOCK_USERS.find((u) => u.email.toLowerCase() === email.toLowerCase());
