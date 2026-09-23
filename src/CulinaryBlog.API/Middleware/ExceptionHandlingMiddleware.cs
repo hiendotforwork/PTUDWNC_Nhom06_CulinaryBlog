@@ -24,7 +24,15 @@ public class ExceptionHandlingMiddleware
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unhandled exception occurred: {Message}", ex.Message);
+            if (ex is ValidationException or AuthConflictException or IdentityOperationException)
+            {
+                _logger.LogWarning("Handled request exception: {Message}", ex.Message);
+            }
+            else
+            {
+                _logger.LogError(ex, "Unhandled exception occurred: {Message}", ex.Message);
+            }
+
             await HandleExceptionAsync(context, ex);
         }
     }

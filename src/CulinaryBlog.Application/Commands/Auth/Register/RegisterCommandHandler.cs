@@ -12,44 +12,67 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, AuthRespo
     private readonly IUserRepository _userRepository;
     private readonly ITokenService _tokenService;
     private readonly IRefreshTokenRepository _refreshTokenRepository;
+    private readonly IUnitOfWork _unitOfWork;
 
     public RegisterCommandHandler(
         IUserRepository userRepository,
         ITokenService tokenService,
-        IRefreshTokenRepository refreshTokenRepository)
+        IRefreshTokenRepository refreshTokenRepository,
+        IUnitOfWork unitOfWork)
     {
         _userRepository = userRepository;
         _tokenService = tokenService;
         _refreshTokenRepository = refreshTokenRepository;
+        _unitOfWork = unitOfWork;
     }
 
     public async Task<AuthResponse> Handle(RegisterCommand request, CancellationToken cancellationToken)
     {
-        // 1. Check email uniqueness
+        // 1. Check email uniqueness (early check)
         var existingEmailUser = await _userRepository.FindByEmailAsync(request.Email, cancellationToken);
         if (existingEmailUser != null)
         {
             throw AuthConflictException.EmailExists();
         }
 
-        // 2. Check username uniqueness
+        // 2. Check username uniqueness (early check)
         var existingNameUser = await _userRepository.FindByUserNameAsync(request.UserName, cancellationToken);
         if (existingNameUser != null)
         {
             throw AuthConflictException.UserNameExists();
         }
 
-        // 3. Create user entity
+        // 3. Begin atomic transaction for user creation, role assignment, and token persistence
+        await using var transaction = await _unitOfWork.BeginTransactionAsync(cancellationToken);
+
+        // 4. Create user entity
         var user = ApplicationUser.Create(request.DisplayName, request.Email, request.UserName);
 
-        // 4. Save user with hashed password
+        // 5. Save user with hashed password
         var (createSucceeded, createErrors) = await _userRepository.CreateAsync(user, request.Password);
         if (!createSucceeded)
         {
-            throw new IdentityOperationException("User creation failed", createErrors);
+            var errorsList = createErrors.ToList();
+
+            // Detect concurrent race-condition duplicates from UserManager / DB constraints
+            if (errorsList.Any(e => e.Contains("DuplicateEmail", StringComparison.OrdinalIgnoreCase) ||
+                                   (e.Contains("email", StringComparison.OrdinalIgnoreCase) && 
+                                    (e.Contains("already", StringComparison.OrdinalIgnoreCase) || e.Contains("taken", StringComparison.OrdinalIgnoreCase)))))
+            {
+                throw AuthConflictException.EmailExists();
+            }
+
+            if (errorsList.Any(e => e.Contains("DuplicateUserName", StringComparison.OrdinalIgnoreCase) ||
+                                   (e.Contains("user name", StringComparison.OrdinalIgnoreCase) && 
+                                    (e.Contains("already", StringComparison.OrdinalIgnoreCase) || e.Contains("taken", StringComparison.OrdinalIgnoreCase)))))
+            {
+                throw AuthConflictException.UserNameExists();
+            }
+
+            throw new IdentityOperationException("User creation failed", errorsList);
         }
 
-        // 5. Assign default Author role
+        // 6. Assign default Author role
         var (roleSucceeded, roleErrors) = await _userRepository.AddToRoleAsync(user, AppRoles.Author);
         if (!roleSucceeded)
         {
@@ -58,18 +81,21 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, AuthRespo
 
         var roles = new List<string> { AppRoles.Author };
 
-        // 6. Generate JWT access token
+        // 7. Generate JWT access token
         var accessToken = _tokenService.GenerateAccessToken(user, roles);
 
-        // 7. Generate refresh token
+        // 8. Generate refresh token
         var rawRefreshToken = _tokenService.GenerateRefreshToken();
         var refreshTokenEntity = RefreshToken.Create(user.Id, rawRefreshToken, ipAddress: null, daysToLive: 7);
 
-        // 8. Persist refresh token hash
+        // 9. Persist refresh token hash
         await _refreshTokenRepository.AddAsync(refreshTokenEntity, cancellationToken);
         await _refreshTokenRepository.SaveChangesAsync(cancellationToken);
 
-        // 9. Return AuthResponse
+        // 10. Commit transaction
+        await transaction.CommitAsync(cancellationToken);
+
+        // 11. Return AuthResponse
         var userDto = new UserDto(
             user.Id,
             user.Email ?? request.Email,
