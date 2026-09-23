@@ -242,6 +242,8 @@ public class AuthControllerTests : IClassFixture<CustomWebApplicationFactory>
         fifthResponse.StatusCode.Should().Be(HttpStatusCode.Locked);
         var body5 = await fifthResponse.Content.ReadAsStringAsync();
         body5.Should().Contain("AUTH_ACCOUNT_LOCKED");
+        body5.Should().Contain("unlockAt");
+        body5.Should().Contain("retryAfterSeconds");
 
         // Subsequent attempt while locked also returns 423 Locked
         var sixthResponse = await _client.PostAsJsonAsync("/api/v1/auth/login", wrongLoginRequest);

@@ -13,6 +13,11 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, AuthResponse>
     private readonly IRefreshTokenRepository _refreshTokenRepository;
     private readonly IUnitOfWork _unitOfWork;
 
+    private static readonly ApplicationUser DummyUser = ApplicationUser.Create(
+        "Security Dummy",
+        "security-dummy@culinaryblog.vn",
+        "security_dummy");
+
     public LoginCommandHandler(
         IUserRepository userRepository,
         ITokenService tokenService,
@@ -30,10 +35,11 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, AuthResponse>
         // 1. Find user by email
         var user = await _userRepository.FindByEmailAsync(request.Email, cancellationToken);
 
-        // 2. Generic error for security (no user enumeration)
-        // Return same error whether email exists or not
+        // 2. Generic error for security (no user enumeration & timing attack mitigation)
+        // Return same error whether email exists or not, with constant-time password check
         if (user == null)
         {
+            await _userRepository.CheckPasswordSignInAsync(DummyUser, request.Password, cancellationToken);
             throw AuthException.InvalidCredentials();
         }
 
@@ -56,8 +62,8 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, AuthResponse>
         // 6. Get user roles
         var roles = await _userRepository.GetRolesAsync(user);
 
-        // 7. Begin transaction for token rotation
-        await using var transaction = await _unitOfWork.BeginTransactionAsync(cancellationToken);
+        // 7. Begin transaction with Serializable isolation level to eliminate concurrent token race condition
+        await using var transaction = await _unitOfWork.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
 
         try
         {

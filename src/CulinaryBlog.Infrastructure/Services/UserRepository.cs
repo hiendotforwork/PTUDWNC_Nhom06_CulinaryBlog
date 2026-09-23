@@ -54,11 +54,19 @@ public class UserRepository : IUserRepository
         return await _userManager.GetRolesAsync(user);
     }
 
+    private static readonly string DummyHash = new PasswordHasher<ApplicationUser>().HashPassword(null!, "DummyPassword123!");
+
     public async Task<SignInResult> CheckPasswordSignInAsync(
         ApplicationUser user,
         string password,
         CancellationToken cancellationToken = default)
     {
+        if (user.Email == "security-dummy@culinaryblog.vn")
+        {
+            _userManager.PasswordHasher.VerifyHashedPassword(user, DummyHash, password);
+            return new SignInResult(false);
+        }
+
         if (await _userManager.IsLockedOutAsync(user))
         {
             var lockoutEnd = await _userManager.GetLockoutEndDateAsync(user);

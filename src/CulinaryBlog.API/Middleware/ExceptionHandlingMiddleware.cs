@@ -39,43 +39,86 @@ public class ExceptionHandlingMiddleware
 
     private static async Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
-        context.Response.ContentType = "application/json";
+        context.Response.ContentType = "application/problem+json";
 
-        var response = exception switch
+        var (statusCode, errorCode, title, detail, errors, customExtensions) = exception switch
         {
-            AuthException authEx => new ErrorResponse(
+            AuthException authEx => (
                 authEx.StatusCode,
                 authEx.ErrorCode,
+                authEx.StatusCode == 423 ? "Account locked" : "Authentication failed",
                 authEx.Message,
-                null
+                null as IEnumerable<ValidationErrorDetail>,
+                authEx.Extensions
             ),
-            AuthConflictException conflictEx => new ErrorResponse(
+            AuthConflictException conflictEx => (
                 (int)HttpStatusCode.Conflict,
                 conflictEx.ErrorCode,
+                "Conflict",
                 conflictEx.Message,
-                null
+                null as IEnumerable<ValidationErrorDetail>,
+                null as IDictionary<string, object?>
             ),
-            ValidationException validationEx => new ErrorResponse(
+            ValidationException validationEx => (
                 (int)HttpStatusCode.UnprocessableEntity,
                 "VALIDATION_ERROR",
+                "Validation failed",
                 "Dữ liệu không hợp lệ.",
-                validationEx.Errors.Select(e => new ValidationErrorDetail(e.PropertyName, e.ErrorMessage))
+                validationEx.Errors.Select(e => new ValidationErrorDetail(e.PropertyName, e.ErrorMessage)),
+                null as IDictionary<string, object?>
             ),
-            IdentityOperationException identityEx => new ErrorResponse(
+            IdentityOperationException identityEx => (
                 (int)HttpStatusCode.BadRequest,
                 "IDENTITY_ERROR",
+                "Identity operation failed",
                 identityEx.Message,
-                identityEx.Errors.Select(e => new ValidationErrorDetail("Identity", e))
+                identityEx.Errors.Select(e => new ValidationErrorDetail("Identity", e)),
+                null as IDictionary<string, object?>
             ),
-            _ => new ErrorResponse(
+            _ => (
                 (int)HttpStatusCode.InternalServerError,
                 "INTERNAL_ERROR",
+                "Internal server error",
                 "Đã có lỗi hệ thống xảy ra. Vui lòng thử lại sau.",
-                null
+                null as IEnumerable<ValidationErrorDetail>,
+                null as IDictionary<string, object?>
             )
         };
 
-        context.Response.StatusCode = response.StatusCode;
+        context.Response.StatusCode = statusCode;
+
+        var extensionsDict = new Dictionary<string, object?>
+        {
+            ["code"] = errorCode,
+            ["traceId"] = context.TraceIdentifier,
+            ["timestamp"] = DateTime.UtcNow.ToString("o")
+        };
+
+        if (errors != null)
+        {
+            extensionsDict["errors"] = errors;
+        }
+
+        if (customExtensions != null)
+        {
+            foreach (var kvp in customExtensions)
+            {
+                extensionsDict[kvp.Key] = kvp.Value;
+            }
+        }
+
+        var response = new ProblemDetailsResponse(
+            Type: $"https://culinaryblog.com/errors/auth/{errorCode}",
+            Title: title,
+            Status: statusCode,
+            Detail: detail,
+            Instance: context.Request.Path,
+            StatusCode: statusCode,
+            ErrorCode: errorCode,
+            Message: detail,
+            Errors: errors,
+            Extensions: extensionsDict
+        );
 
         var json = JsonSerializer.Serialize(response, new JsonSerializerOptions
         {
@@ -87,10 +130,16 @@ public class ExceptionHandlingMiddleware
 
     public record ValidationErrorDetail(string Field, string Message);
 
-    public record ErrorResponse(
+    public record ProblemDetailsResponse(
+        string Type,
+        string Title,
+        int Status,
+        string Detail,
+        string Instance,
         int StatusCode,
         string ErrorCode,
         string Message,
-        IEnumerable<ValidationErrorDetail>? Errors
+        IEnumerable<ValidationErrorDetail>? Errors,
+        Dictionary<string, object?> Extensions
     );
 }

@@ -21,7 +21,7 @@ public class LoginCommandHandlerTests
 
     public LoginCommandHandlerTests()
     {
-        _unitOfWorkMock.Setup(u => u.BeginTransactionAsync(It.IsAny<CancellationToken>()))
+        _unitOfWorkMock.Setup(u => u.BeginTransactionAsync(It.IsAny<System.Data.IsolationLevel>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(_transactionMock.Object);
 
         _handler = new LoginCommandHandler(
@@ -36,7 +36,7 @@ public class LoginCommandHandlerTests
         new("chef@example.com", "Password123!");
 
     [Fact]
-    public async Task Handle_WhenUserNotFound_ShouldThrowInvalidCredentials()
+    public async Task Handle_WhenUserNotFound_ShouldThrowInvalidCredentialsAndRunDummyCheck()
     {
         // Arrange
         var command = CreateValidCommand();
@@ -50,6 +50,12 @@ public class LoginCommandHandlerTests
         var ex = await act.Should().ThrowAsync<AuthException>();
         ex.Which.ErrorCode.Should().Be("AUTH_INVALID_CREDENTIALS");
         ex.Which.StatusCode.Should().Be(401);
+
+        // Verify timing attack mitigation was executed
+        _userRepositoryMock.Verify(r => r.CheckPasswordSignInAsync(
+            It.Is<ApplicationUser>(u => u.Email == "security-dummy@culinaryblog.vn"),
+            command.Password,
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -125,5 +131,6 @@ public class LoginCommandHandlerTests
         _refreshTokenRepositoryMock.Verify(r => r.AddAsync(It.IsAny<RefreshToken>(), It.IsAny<CancellationToken>()), Times.Once);
         _refreshTokenRepositoryMock.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
         _transactionMock.Verify(t => t.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _unitOfWorkMock.Verify(u => u.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, It.IsAny<CancellationToken>()), Times.Once);
     }
 }
