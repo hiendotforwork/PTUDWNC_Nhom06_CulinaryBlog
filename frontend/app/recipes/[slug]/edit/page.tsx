@@ -1,3 +1,6 @@
+// Tệp này là trang chỉnh sửa công thức theo slug.
+// Chức năng: tải dữ liệu và render form chỉnh sửa (EditRecipePage).
+
 "use client";
 
 import React, { use, useEffect, useState } from "react";
@@ -12,6 +15,8 @@ interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
+// Chức năng: tải công thức theo slug và truyền dữ liệu vào RecipeForm.
+// Input: params chứa slug. Output: React component trang chỉnh sửa hoặc trang 404.
 export default function EditRecipePage({ params }: PageProps) {
   const { slug } = use(params);
   const [recipe, setRecipe] = useState<Recipe | null>();

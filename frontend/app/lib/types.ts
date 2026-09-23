@@ -1,3 +1,6 @@
+// Tệp này định nghĩa các kiểu dữ liệu dùng chung cho giao diện, gồm người dùng, danh mục và toàn bộ mô hình Recipe.
+// Chức năng: cung cấp type/interface cho công thức, ảnh, nguyên liệu, bước làm, dinh dưỡng, xác thực và thông báo.
+
 export type DifficultyLevel = "Easy" | "Medium" | "Hard";
 export type RecipeStatus = "Draft" | "Published" | "Archived";
 

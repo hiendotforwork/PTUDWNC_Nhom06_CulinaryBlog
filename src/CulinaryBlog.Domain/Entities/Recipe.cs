@@ -1,8 +1,13 @@
+// Tệp này định nghĩa trạng thái, độ khó, thực thể công thức và thông tin dinh dưỡng.
+// Chức năng: mô hình hóa dữ liệu chính của FR-RCP và các quan hệ thành phần.
+
 namespace CulinaryBlog.Domain.Entities;
 
 public enum RecipeStatus : short { Draft, Published, Archived }
 public enum RecipeDifficulty : short { Easy = 1, Medium, Hard, Expert }
 
+// Class biểu diễn công thức cùng danh mục, tác giả, nguyên liệu, bước làm và ảnh.
+// Input: dữ liệu nghiệp vụ. Output: thực thể Recipe được EF Core lưu và truy vấn.
 public sealed class Recipe : BaseEntity
 {
     public string Title { get; set; } = "";
@@ -24,6 +29,8 @@ public sealed class Recipe : BaseEntity
     public List<RecipeImage> Images { get; set; } = [];
 }
 
+// Class value object chứa thông tin dinh dưỡng của công thức.
+// Input: các chỉ số dinh dưỡng tùy chọn. Output: dữ liệu JSONB gắn với Recipe.
 public sealed class RecipeNutrition
 {
     public decimal? Calories { get; set; }

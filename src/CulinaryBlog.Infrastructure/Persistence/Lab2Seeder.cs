@@ -1,3 +1,6 @@
+// Tệp này tạo và kiểm tra dữ liệu mẫu Lab 2 cho database Recipe.
+// Chức năng: sinh khóa ổn định (Key), tạo dữ liệu (SeedAsync) và kiểm tra số lượng (VerifyAsync).
+
 using System.Security.Cryptography;
 using System.Text;
 using CulinaryBlog.Domain.Entities;
@@ -8,11 +11,17 @@ namespace CulinaryBlog.Infrastructure.Persistence;
 
 public sealed record Lab2Counts(int Categories, int Recipes, int Ingredients, int Steps, int MinimumIngredients, int MinimumSteps);
 
+// Class tiện ích tạo 20 danh mục, 100 công thức và các thành phần con theo yêu cầu Lab 2.
+// Input: ApplicationDbContext. Output: dữ liệu mẫu hoặc kết quả đếm xác minh.
 public static class Lab2Seeder
 {
     private const string Prefix = "lab2-chuong-";
+    // Chức năng: sinh Guid ổn định từ chuỗi để seed có thể chạy lặp lại.
+    // Input: value. Output: Guid được băm từ prefix và value.
     private static Guid Key(string value) => new(MD5.HashData(Encoding.UTF8.GetBytes(Prefix + value)));
 
+    // Chức năng: thêm dữ liệu mẫu nếu chưa tồn tại.
+    // Input: ApplicationDbContext. Output: Task hoàn tất sau khi lưu dữ liệu.
     public static async Task SeedAsync(ApplicationDbContext db)
     {
         await using var tx = await db.Database.BeginTransactionAsync();
@@ -58,6 +67,8 @@ public static class Lab2Seeder
         await tx.CommitAsync();
     }
 
+    // Chức năng: đếm và kiểm tra dữ liệu mẫu theo yêu cầu tối thiểu.
+    // Input: ApplicationDbContext. Output: Lab2Counts chứa các số lượng thực tế.
     public static async Task<Lab2Counts> VerifyAsync(ApplicationDbContext db)
     {
         var recipes = db.Recipes.Where(x => x.Slug.StartsWith(Prefix));

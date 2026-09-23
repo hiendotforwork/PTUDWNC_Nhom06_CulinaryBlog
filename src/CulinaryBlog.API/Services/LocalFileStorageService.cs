@@ -1,10 +1,17 @@
+// Tệp này triển khai lưu ảnh công thức trên ổ đĩa local cho môi trường phát triển.
+// Chức năng: lưu tệp (UploadAsync) và xóa tệp (DeleteAsync).
+
 namespace CulinaryBlog.API.Services;
 
 using CulinaryBlog.Application.Interfaces;
 using Microsoft.AspNetCore.Hosting;
 
+// Class triển khai IFileStorageService bằng thư mục wwwroot/uploads.
+// Input: IWebHostEnvironment. Output: dịch vụ lưu/xóa tệp local.
 public sealed class LocalFileStorageService(IWebHostEnvironment environment) : IFileStorageService
 {
+    // Chức năng: lưu stream với tên ngẫu nhiên và trả URL công khai.
+    // Input: stream, contentType, extension, folder và cancellationToken. Output: StoredFile.
     public async Task<StoredFile> UploadAsync(Stream stream, string contentType, string extension, string folder, CancellationToken cancellationToken)
     {
         var root = Path.Combine(environment.ContentRootPath, "wwwroot");
@@ -19,6 +26,8 @@ public sealed class LocalFileStorageService(IWebHostEnvironment environment) : I
         return new StoredFile('/' + Path.Combine(relativeDirectory, fileName).Replace('\\', '/'));
     }
 
+    // Chức năng: xóa tệp local được ánh xạ từ URL.
+    // Input: url và cancellationToken. Output: Task hoàn tất.
     public Task DeleteAsync(string url, CancellationToken cancellationToken)
     {
         var root = Path.Combine(environment.ContentRootPath, "wwwroot");

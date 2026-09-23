@@ -1,3 +1,6 @@
+// Tệp này ánh xạ các thực thể Recipe sang bảng, cột, ràng buộc và chỉ mục PostgreSQL.
+// Chức năng: mapping nền tảng (Base) và cấu hình Category, Recipe, Ingredient, Step, Image.
+
 using CulinaryBlog.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -5,8 +8,12 @@ using NpgsqlTypes;
 
 namespace CulinaryBlog.Infrastructure.Persistence;
 
+// Class tiện ích dùng chung cho mapping thực thể kế thừa BaseEntity.
+// Input: EntityTypeBuilder và tên bảng. Output: builder đã cấu hình schema, khóa và query filter.
 internal static class Mapping
 {
+    // Chức năng: cấu hình khóa, audit, RowVersion và xóa mềm.
+    // Input: builder và table. Output: cập nhật EntityTypeBuilder tại chỗ.
     public static void Base<T>(EntityTypeBuilder<T> b, string table) where T : BaseEntity
     {
         b.ToTable(table, "culinary", t => t.HasCheckConstraint($"CK_{table}_RowVersion", "octet_length(\"RowVersion\") = 16"));
@@ -18,8 +25,12 @@ internal static class Mapping
     }
 }
 
+// Class cấu hình bảng categories và quan hệ với recipes.
+// Input: EntityTypeBuilder<Category>. Output: mapping EF Core cho Category.
 public sealed class CategoryConfiguration : IEntityTypeConfiguration<Category>
 {
+    // Chức năng: cấu hình cột, chỉ mục và quan hệ của Category.
+    // Input: builder. Output: builder đã được cập nhật.
     public void Configure(EntityTypeBuilder<Category> b)
     {
         Mapping.Base(b, "Categories");
@@ -35,8 +46,12 @@ public sealed class CategoryConfiguration : IEntityTypeConfiguration<Category>
     }
 }
 
+// Class cấu hình bảng recipes, JSONB dinh dưỡng và quan hệ tác giả/danh mục.
+// Input: EntityTypeBuilder<Recipe>. Output: mapping EF Core cho Recipe.
 public sealed class RecipeConfiguration : IEntityTypeConfiguration<Recipe>
 {
+    // Chức năng: cấu hình cột, chỉ mục tìm kiếm và quan hệ Recipe.
+    // Input: builder. Output: builder đã được cập nhật.
     public void Configure(EntityTypeBuilder<Recipe> b)
     {
         Mapping.Base(b, "Recipes");
@@ -72,8 +87,12 @@ public sealed class RecipeConfiguration : IEntityTypeConfiguration<Recipe>
     }
 }
 
+// Class cấu hình bảng recipe_ingredients.
+// Input: EntityTypeBuilder<RecipeIngredient>. Output: mapping nguyên liệu.
 public sealed class IngredientConfiguration : IEntityTypeConfiguration<RecipeIngredient>
 {
+    // Chức năng: cấu hình cột, thứ tự và quan hệ nguyên liệu-công thức.
+    // Input: builder. Output: builder đã được cập nhật.
     public void Configure(EntityTypeBuilder<RecipeIngredient> b)
     {
         Mapping.Base(b, "RecipeIngredients");
@@ -92,8 +111,12 @@ public sealed class IngredientConfiguration : IEntityTypeConfiguration<RecipeIng
     }
 }
 
+// Class cấu hình bảng recipe_steps.
+// Input: EntityTypeBuilder<RecipeStep>. Output: mapping bước làm.
 public sealed class StepConfiguration : IEntityTypeConfiguration<RecipeStep>
 {
+    // Chức năng: cấu hình cột, số bước và quan hệ bước-công thức.
+    // Input: builder. Output: builder đã được cập nhật.
     public void Configure(EntityTypeBuilder<RecipeStep> b)
     {
         Mapping.Base(b, "RecipeSteps");
@@ -113,8 +136,12 @@ public sealed class StepConfiguration : IEntityTypeConfiguration<RecipeStep>
     }
 }
 
+// Class cấu hình bảng recipe_images.
+// Input: EntityTypeBuilder<RecipeImage>. Output: mapping ảnh công thức.
 public sealed class ImageConfiguration : IEntityTypeConfiguration<RecipeImage>
 {
+    // Chức năng: cấu hình URL, ảnh đại diện, thứ tự và quan hệ ảnh-công thức.
+    // Input: builder. Output: builder đã được cập nhật.
     public void Configure(EntityTypeBuilder<RecipeImage> b)
     {
         Mapping.Base(b, "RecipeImages");

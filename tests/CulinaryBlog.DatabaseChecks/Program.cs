@@ -1,3 +1,7 @@
+// Tệp này là chương trình kiểm tra nhanh schema và dữ liệu mẫu Recipe của Lab 2.
+// Chức năng: kết nối PostgreSQL, kiểm tra bảng/migration và xác minh số lượng bằng Lab2Seeder.VerifyAsync.
+// Input: DefaultConnection từ cấu hình. Output: kết quả kiểm tra trên console và mã thoát tiến trình.
+
 using Microsoft.EntityFrameworkCore.Storage;
 using CulinaryBlog.Infrastructure.Persistence;
 using CulinaryBlog.Infrastructure.Data;

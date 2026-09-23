@@ -1,3 +1,6 @@
+// Tệp này cung cấp API quản lý ảnh công thức.
+// Chức năng: tải ảnh (Upload), đặt ảnh đại diện (SetPrimary), xóa ảnh (Delete) và nhận dạng tệp (DetectFormat).
+
 namespace CulinaryBlog.API.Controllers;
 
 using System.Security.Claims;
@@ -12,6 +15,8 @@ using Microsoft.EntityFrameworkCore;
 [ApiController]
 [Authorize(Roles = AppRoles.Author + "," + AppRoles.Admin)]
 [Route("api/v1/recipes/{recipeId:guid}/images")]
+// Class điều phối FR-RCP-008 và lưu tệp qua IFileStorageService.
+// Input: DbContext, dịch vụ lưu tệp và logger. Output: phản hồi HTTP cho thao tác ảnh.
 public sealed class RecipeImagesController(ApplicationDbContext db, IFileStorageService storage, ILogger<RecipeImagesController> logger) : ControllerBase
 {
     private const long MaxFileSize = 5 * 1024 * 1024;
@@ -19,6 +24,8 @@ public sealed class RecipeImagesController(ApplicationDbContext db, IFileStorage
     [HttpPost]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(MaxFileSize + 1024 * 32)]
+    // Chức năng: kiểm tra và tải ảnh JPEG/PNG/WebP tối đa 5 MB.
+    // Input: recipeId, ImageUploadRequest và cancellationToken. Output: thông tin ảnh đã lưu hoặc lỗi.
     public async Task<IActionResult> Upload(Guid recipeId, [FromForm] ImageUploadRequest request, CancellationToken ct)
     {
         var access = await EditableRecipe(recipeId, ct); if (access is not null) return access;
@@ -46,6 +53,8 @@ public sealed class RecipeImagesController(ApplicationDbContext db, IFileStorage
     }
 
     [HttpPost("{imageId:guid}/primary")]
+    // Chức năng: chọn một ảnh làm ảnh đại diện duy nhất.
+    // Input: recipeId, imageId, VersionRequest và cancellationToken. Output: ảnh đại diện mới hoặc lỗi.
     public async Task<IActionResult> SetPrimary(Guid recipeId, Guid imageId, VersionRequest request, CancellationToken ct)
     {
         var access = await EditableRecipe(recipeId, ct); if (access is not null) return access;
@@ -60,6 +69,8 @@ public sealed class RecipeImagesController(ApplicationDbContext db, IFileStorage
     }
 
     [HttpDelete("{imageId:guid}")]
+    // Chức năng: xóa mềm bản ghi ảnh và xóa tệp vật lý.
+    // Input: recipeId, imageId, VersionRequest và cancellationToken. Output: 204 hoặc lỗi.
     public async Task<IActionResult> Delete(Guid recipeId, Guid imageId, VersionRequest request, CancellationToken ct)
     {
         var access = await EditableRecipe(recipeId, ct); if (access is not null) return access;
@@ -86,16 +97,22 @@ public sealed class RecipeImagesController(ApplicationDbContext db, IFileStorage
         return NoContent();
     }
 
+    // Chức năng: kiểm tra quyền sửa ảnh của owner/Admin.
+    // Input: id công thức và cancellationToken. Output: null nếu được phép hoặc IActionResult lỗi.
     private async Task<IActionResult?> EditableRecipe(Guid id, CancellationToken ct)
     {
         var recipe = await db.Recipes.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, ct); if (recipe is null) return NotFound();
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
         return recipe.AuthorId == userId || User.IsInRole(AppRoles.Admin) ? null : Forbid();
     }
+    // Chức năng: giải mã RowVersion Base64.
+    // Input: text. Output: true kèm byte[] hoặc false.
     private static bool TryVersion(string text, out byte[]? version)
     {
         try { version = Convert.FromBase64String(text); return version.Length == 16; } catch (FormatException) { version = null; return false; }
     }
+    // Chức năng: đọc chữ ký tệp để nhận dạng JPEG, PNG hoặc WebP.
+    // Input: IFormFile và cancellationToken. Output: content type, extension hoặc null.
     private static async Task<(string ContentType, string Extension)?> DetectFormat(IFormFile file, CancellationToken ct)
     {
         var bytes = new byte[12]; await using var stream = file.OpenReadStream(); var read = await stream.ReadAsync(bytes, ct);
@@ -104,10 +121,16 @@ public sealed class RecipeImagesController(ApplicationDbContext db, IFileStorage
         if (read >= 12 && bytes.AsSpan(0, 4).SequenceEqual("RIFF"u8) && bytes.AsSpan(8, 4).SequenceEqual("WEBP"u8)) return ("image/webp", ".webp");
         return null;
     }
+    // Chức năng: tạo response ảnh có RowVersion.
+    // Input: RecipeImage. Output: object phản hồi.
     private static object ImageResponse(RecipeImage x) => new { x.Id, x.OriginalUrl, x.MediumUrl, x.ThumbnailUrl, x.AltText, x.IsPrimary, x.OrderIndex, rowVersion = Convert.ToBase64String(x.RowVersion) };
+    // Chức năng: tạo payload lỗi ảnh thống nhất.
+    // Input: code và message. Output: object lỗi.
     private static object Error(string code, string message) => new { errorCode = code, message };
 }
 
+// Class nhận dữ liệu multipart khi upload ảnh.
+// Input: File và AltText. Output: mô hình request được model binder tạo.
 public sealed class ImageUploadRequest
 {
     public required IFormFile File { get; init; }

@@ -1,3 +1,6 @@
+// Tệp này khởi động Web API và đăng ký các dịch vụ dùng chung; phần Recipe cấu hình lệnh Lab 2, DbContext, lưu ảnh và static files.
+// Chức năng Recipe: migrate/seed/verify database theo tham số dòng lệnh và đăng ký LocalFileStorageService.
+
 using CulinaryBlog.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
@@ -20,6 +23,8 @@ using Scalar.AspNetCore;
 using AuthApplicationUser = CulinaryBlog.Domain.Entities.ApplicationUser;
 
 var builder = WebApplication.CreateBuilder(args);
+// Chức năng: nhận lệnh --lab2-migrate, --lab2-seed hoặc --lab2-verify để thao tác database.
+// Input: args của tiến trình và DefaultConnection. Output: migration/dữ liệu mẫu/kết quả kiểm tra rồi kết thúc tiến trình.
 var labCommand = args.FirstOrDefault(x => x.StartsWith("--lab2-"));
 if (labCommand is not null)
 {

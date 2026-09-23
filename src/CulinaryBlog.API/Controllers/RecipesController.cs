@@ -1,3 +1,7 @@
+// Tệp này cung cấp API cho vòng đời chính của công thức nấu ăn.
+// Chức năng: xem danh sách (GetAll), xem chi tiết (GetBySlug), tạo (Create), cập nhật (Update),
+// xuất bản/hủy xuất bản (Publish, Unpublish), lưu trữ/khôi phục (Archive, Unarchive) và xóa mềm (Delete).
+
 namespace CulinaryBlog.API.Controllers;
 
 using System.Security.Claims;
@@ -13,9 +17,14 @@ using Microsoft.EntityFrameworkCore;
 
 [ApiController]
 [Route("api/v1/recipes")]
+// Class điều phối các endpoint FR-RCP-001 đến FR-RCP-007.
+// Input: ApplicationDbContext. Output: phản hồi HTTP chứa dữ liệu hoặc lỗi nghiệp vụ.
 public sealed class RecipesController(ApplicationDbContext db) : ControllerBase
 {
     [HttpGet]
+    // Chức năng: lấy danh sách công thức có phân trang, lọc và sắp xếp.
+    // Input: page, pageSize, search, categoryId, difficulty, sort, mine và cancellationToken.
+    // Output: RecipePageResponse hoặc lỗi xác thực/tham số.
     public async Task<ActionResult<RecipePageResponse>> GetAll(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 12,
@@ -77,6 +86,8 @@ public sealed class RecipesController(ApplicationDbContext db) : ControllerBase
     }
 
     [HttpGet("{slug}")]
+    // Chức năng: lấy chi tiết công thức được phép xem theo slug.
+    // Input: slug và cancellationToken. Output: RecipeDetailResponse hoặc 404.
     public async Task<ActionResult<RecipeDetailResponse>> GetBySlug(string slug, CancellationToken cancellationToken)
     {
         var recipe = await db.Recipes.AsNoTracking().AsSplitQuery()
@@ -103,6 +114,8 @@ public sealed class RecipesController(ApplicationDbContext db) : ControllerBase
     }
     [HttpPost]
     [Authorize(Roles = AppRoles.Author + "," + AppRoles.Admin)]
+    // Chức năng: tạo một công thức ở trạng thái nháp cho Author/Admin.
+    // Input: CreateRecipeRequest và cancellationToken. Output: 201 kèm RecipeMutationResponse hoặc lỗi kiểm tra.
     public async Task<IActionResult> Create(CreateRecipeRequest request, CancellationToken cancellationToken)
     {
         var validation = await ValidateRequest(request.Title, request.Description, request.PrepTime, request.CookTime, request.Servings, request.Difficulty, request.CategoryId, cancellationToken);
@@ -130,6 +143,8 @@ public sealed class RecipesController(ApplicationDbContext db) : ControllerBase
 
     [HttpPut("{id:guid}")]
     [Authorize(Roles = AppRoles.Author + "," + AppRoles.Admin)]
+    // Chức năng: cập nhật thông tin chính của công thức theo quyền sở hữu và RowVersion.
+    // Input: id, UpdateRecipeRequest và cancellationToken. Output: RecipeMutationResponse, 403, 404, 409 hoặc 422.
     public async Task<IActionResult> Update(Guid id, UpdateRecipeRequest request, CancellationToken cancellationToken)
     {
         byte[] expectedVersion;
@@ -163,6 +178,8 @@ public sealed class RecipesController(ApplicationDbContext db) : ControllerBase
 
     [HttpPost("{id:guid}/publish")]
     [Authorize(Roles = AppRoles.Author + "," + AppRoles.Admin)]
+    // Chức năng: xuất bản công thức đã có ít nhất một nguyên liệu và một bước.
+    // Input: id, VersionRequest và cancellationToken. Output: trạng thái mới hoặc lỗi nghiệp vụ.
     public async Task<IActionResult> Publish(Guid id, VersionRequest request, CancellationToken ct)
     {
         var access = await EditableRecipe(id, ct); if (access.Result is not null) return access.Result;
@@ -176,6 +193,8 @@ public sealed class RecipesController(ApplicationDbContext db) : ControllerBase
 
     [HttpPost("{id:guid}/unpublish")]
     [Authorize(Roles = AppRoles.Author + "," + AppRoles.Admin)]
+    // Chức năng: đưa công thức đã xuất bản về bản nháp.
+    // Input: id, VersionRequest và cancellationToken. Output: trạng thái mới hoặc lỗi nghiệp vụ.
     public async Task<IActionResult> Unpublish(Guid id, VersionRequest request, CancellationToken ct)
     {
         var access = await EditableRecipe(id, ct); if (access.Result is not null) return access.Result;
@@ -186,6 +205,8 @@ public sealed class RecipesController(ApplicationDbContext db) : ControllerBase
 
     [HttpPost("{id:guid}/archive")]
     [Authorize(Roles = AppRoles.Author + "," + AppRoles.Admin)]
+    // Chức năng: lưu trữ công thức.
+    // Input: id, VersionRequest và cancellationToken. Output: trạng thái Archived hoặc lỗi.
     public async Task<IActionResult> Archive(Guid id, VersionRequest request, CancellationToken ct)
     {
         var access = await EditableRecipe(id, ct); if (access.Result is not null) return access.Result;
@@ -196,6 +217,8 @@ public sealed class RecipesController(ApplicationDbContext db) : ControllerBase
 
     [HttpPost("{id:guid}/unarchive")]
     [Authorize(Roles = AppRoles.Author + "," + AppRoles.Admin)]
+    // Chức năng: khôi phục công thức lưu trữ về bản nháp.
+    // Input: id, VersionRequest và cancellationToken. Output: trạng thái Draft hoặc lỗi.
     public async Task<IActionResult> Unarchive(Guid id, VersionRequest request, CancellationToken ct)
     {
         var access = await EditableRecipe(id, ct); if (access.Result is not null) return access.Result;
@@ -206,6 +229,8 @@ public sealed class RecipesController(ApplicationDbContext db) : ControllerBase
 
     [HttpDelete("{id:guid}")]
     [Authorize(Roles = AppRoles.Author + "," + AppRoles.Admin)]
+    // Chức năng: xóa mềm công thức và các thành phần con.
+    // Input: id, VersionRequest và cancellationToken. Output: 204 hoặc lỗi quyền/đồng thời.
     public async Task<IActionResult> Delete(Guid id, VersionRequest request, CancellationToken ct)
     {
         var recipe = await db.Recipes.IgnoreQueryFilters().Include(x => x.Ingredients).Include(x => x.Steps).Include(x => x.Images)
@@ -222,6 +247,8 @@ public sealed class RecipesController(ApplicationDbContext db) : ControllerBase
         catch (DbUpdateConcurrencyException) { return Conflict(ConcurrencyError()); }
     }
 
+    // Chức năng: tìm công thức và kiểm tra quyền sửa của owner/Admin.
+    // Input: id và cancellationToken. Output: công thức hoặc IActionResult lỗi.
     private async Task<(Recipe? Value, IActionResult? Result)> EditableRecipe(Guid id, CancellationToken ct)
     {
         var recipe = await db.Recipes.SingleOrDefaultAsync(x => x.Id == id, ct);
@@ -229,6 +256,8 @@ public sealed class RecipesController(ApplicationDbContext db) : ControllerBase
         return recipe.AuthorId == CurrentUserId() || User.IsInRole(AppRoles.Admin) ? (recipe, null) : (null, Forbid());
     }
 
+    // Chức năng: thay đổi trạng thái có kiểm tra RowVersion.
+    // Input: recipe, rowVersion, status, publishedAt và cancellationToken. Output: trạng thái mới hoặc 409.
     private async Task<IActionResult> ChangeStatus(Recipe recipe, string rowVersion, RecipeStatus status, DateTimeOffset? publishedAt, CancellationToken ct)
     {
         if (!TryRowVersion(rowVersion, out var version, out var error)) return error!;
@@ -242,15 +271,25 @@ public sealed class RecipesController(ApplicationDbContext db) : ControllerBase
         catch (DbUpdateConcurrencyException) { return Conflict(ConcurrencyError()); }
     }
 
+    // Chức năng: giải mã và kiểm tra RowVersion Base64.
+    // Input: text. Output: true kèm byte[] hợp lệ hoặc IActionResult lỗi.
     private bool TryRowVersion(string text, out byte[]? version, out IActionResult? error)
     {
         try { version = Convert.FromBase64String(text); if (version.Length == 16) { error = null; return true; } } catch (FormatException) { }
         version = null; error = UnprocessableEntity(new { errorCode = "INVALID_ROW_VERSION", message = "RowVersion không hợp lệ." }); return false;
     }
+    // Chức năng: tạo payload lỗi nghiệp vụ thống nhất.
+    // Input: code và message. Output: object lỗi.
     private static object BusinessError(string code, string message) => new { errorCode = code, message };
+    // Chức năng: tạo payload lỗi xung đột cập nhật.
+    // Input: không có. Output: object lỗi đồng thời.
     private static object ConcurrencyError() => new { errorCode = "RECIPE_CONCURRENCY_CONFLICT", message = "Công thức đã được thay đổi bởi người khác." };
+    // Chức năng: đọc mã người dùng hiện tại từ JWT claims.
+    // Input: claims của request. Output: userId hoặc null.
     private string? CurrentUserId() => User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
 
+    // Chức năng: kiểm tra dữ liệu công thức và sự tồn tại của danh mục.
+    // Input: các trường công thức, categoryId và cancellationToken. Output: null nếu hợp lệ hoặc object lỗi.
     private async Task<object?> ValidateRequest(string title, string description, int prepTime, int cookTime, int servings, RecipeDifficulty difficulty, Guid categoryId, CancellationToken cancellationToken)
     {
         var errors = new Dictionary<string, string[]>();
@@ -264,6 +303,8 @@ public sealed class RecipesController(ApplicationDbContext db) : ControllerBase
         return errors.Count == 0 ? null : new { errorCode = "VALIDATION_ERROR", message = "Dữ liệu không hợp lệ.", errors };
     }
 
+    // Chức năng: chuẩn hóa tiêu đề thành slug URL.
+    // Input: value - chuỗi tiêu đề. Output: slug chữ thường chỉ gồm ký tự hợp lệ.
     private static string Slugify(string value)
     {
         var normalized = value.Trim().ToLowerInvariant().Normalize(NormalizationForm.FormD);

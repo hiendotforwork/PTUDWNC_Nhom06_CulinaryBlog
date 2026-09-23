@@ -1,3 +1,7 @@
+// Tệp này cung cấp API quản lý nguyên liệu và các bước thực hiện của công thức.
+// Chức năng: CRUD nguyên liệu (AddIngredient, UpdateIngredient, DeleteIngredient) và
+// CRUD bước làm (AddStep, UpdateStep, DeleteStep).
+
 namespace CulinaryBlog.API.Controllers;
 
 using System.Security.Claims;
@@ -11,9 +15,13 @@ using Microsoft.EntityFrameworkCore;
 [ApiController]
 [Authorize(Roles = AppRoles.Author + "," + AppRoles.Admin)]
 [Route("api/v1/recipes/{recipeId:guid}")]
+// Class điều phối FR-RCP-009 và FR-RCP-010.
+// Input: ApplicationDbContext. Output: phản hồi HTTP cho thao tác thành phần công thức.
 public sealed class RecipeComponentsController(ApplicationDbContext db) : ControllerBase
 {
     [HttpPost("ingredients")]
+    // Chức năng: thêm nguyên liệu vào cuối danh sách.
+    // Input: recipeId, IngredientRequest và cancellationToken. Output: nguyên liệu đã tạo hoặc lỗi.
     public async Task<IActionResult> AddIngredient(Guid recipeId, IngredientRequest request, CancellationToken ct)
     {
         var recipe = await EditableRecipe(recipeId, ct);
@@ -27,6 +35,8 @@ public sealed class RecipeComponentsController(ApplicationDbContext db) : Contro
     }
 
     [HttpPut("ingredients/{id:guid}")]
+    // Chức năng: cập nhật nguyên liệu và thứ tự hiển thị.
+    // Input: recipeId, id, IngredientUpdateRequest và cancellationToken. Output: nguyên liệu mới hoặc lỗi.
     public async Task<IActionResult> UpdateIngredient(Guid recipeId, Guid id, IngredientUpdateRequest request, CancellationToken ct)
     {
         var recipe = await EditableRecipe(recipeId, ct); if (recipe.Result is not null) return recipe.Result;
@@ -40,6 +50,8 @@ public sealed class RecipeComponentsController(ApplicationDbContext db) : Contro
     }
 
     [HttpDelete("ingredients/{id:guid}")]
+    // Chức năng: xóa mềm một nguyên liệu.
+    // Input: recipeId, id, VersionRequest và cancellationToken. Output: 204 hoặc lỗi.
     public async Task<IActionResult> DeleteIngredient(Guid recipeId, Guid id, VersionRequest request, CancellationToken ct)
     {
         var recipe = await EditableRecipe(recipeId, ct); if (recipe.Result is not null) return recipe.Result;
@@ -50,6 +62,8 @@ public sealed class RecipeComponentsController(ApplicationDbContext db) : Contro
     }
 
     [HttpPost("steps")]
+    // Chức năng: thêm bước thực hiện ở cuối danh sách.
+    // Input: recipeId, StepRequest và cancellationToken. Output: bước đã tạo hoặc lỗi.
     public async Task<IActionResult> AddStep(Guid recipeId, StepRequest request, CancellationToken ct)
     {
         var recipe = await EditableRecipe(recipeId, ct); if (recipe.Result is not null) return recipe.Result;
@@ -63,6 +77,8 @@ public sealed class RecipeComponentsController(ApplicationDbContext db) : Contro
     }
 
     [HttpPut("steps/{id:guid}")]
+    // Chức năng: cập nhật nội dung một bước thực hiện.
+    // Input: recipeId, id, StepUpdateRequest và cancellationToken. Output: bước mới hoặc lỗi.
     public async Task<IActionResult> UpdateStep(Guid recipeId, Guid id, StepUpdateRequest request, CancellationToken ct)
     {
         var recipe = await EditableRecipe(recipeId, ct); if (recipe.Result is not null) return recipe.Result;
@@ -76,6 +92,8 @@ public sealed class RecipeComponentsController(ApplicationDbContext db) : Contro
     }
 
     [HttpDelete("steps/{id:guid}")]
+    // Chức năng: xóa mềm một bước thực hiện.
+    // Input: recipeId, id, VersionRequest và cancellationToken. Output: 204 hoặc lỗi.
     public async Task<IActionResult> DeleteStep(Guid recipeId, Guid id, VersionRequest request, CancellationToken ct)
     {
         var recipe = await EditableRecipe(recipeId, ct); if (recipe.Result is not null) return recipe.Result;
@@ -85,30 +103,44 @@ public sealed class RecipeComponentsController(ApplicationDbContext db) : Contro
         return await SaveComponent(item.Id, () => null, ct, noContent: true);
     }
 
+    // Chức năng: kiểm tra công thức tồn tại và người dùng có quyền sửa.
+    // Input: id và cancellationToken. Output: công thức hoặc IActionResult lỗi.
     private async Task<(Recipe? Value, IActionResult? Result)> EditableRecipe(Guid id, CancellationToken ct)
     {
         var recipe = await db.Recipes.SingleOrDefaultAsync(x => x.Id == id, ct); if (recipe is null) return (null, NotFound());
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
         return recipe.AuthorId == userId || User.IsInRole(AppRoles.Admin) ? (recipe, null) : (null, Forbid());
     }
+    // Chức năng: kiểm tra tên, số lượng và đơn vị nguyên liệu.
+    // Input: name, quantity và unit. Output: null hoặc object lỗi.
     private static object? ValidateIngredient(string name, decimal? quantity, string? unit)
     {
         if (string.IsNullOrWhiteSpace(name) || name.Trim().Length > 200) return Validation("name", "Tên nguyên liệu phải có từ 1 đến 200 ký tự.");
         if ((quantity is null) != string.IsNullOrWhiteSpace(unit) || quantity <= 0) return Validation("quantity", "Quantity và Unit phải cùng để trống hoặc cùng hợp lệ.");
         return null;
     }
+    // Chức năng: giải mã RowVersion dùng cho kiểm soát đồng thời.
+    // Input: text. Output: true kèm byte[] hoặc IActionResult lỗi.
     private bool TryVersion(string text, out byte[]? value, out IActionResult? error)
     {
         try { value = Convert.FromBase64String(text); if (value.Length == 16) { error = null; return true; } } catch (FormatException) { }
         value = null; error = UnprocessableEntity(Validation("rowVersion", "RowVersion không hợp lệ.")); return false;
     }
+    // Chức năng: lưu thay đổi thành phần và xử lý xung đột.
+    // Input: id, hàm tạo response, cancellationToken và noContent. Output: response thành công hoặc 409.
     private async Task<IActionResult> SaveComponent(Guid id, Func<object?> response, CancellationToken ct, bool noContent = false)
     {
         try { await db.SaveChangesAsync(ct); return noContent ? NoContent() : Ok(response()); }
         catch (DbUpdateConcurrencyException) { return Conflict(new { errorCode = "CONCURRENCY_CONFLICT", message = "Dữ liệu đã được thay đổi bởi người khác.", id }); }
     }
+    // Chức năng: tạo payload lỗi validation theo trường.
+    // Input: field và message. Output: object lỗi.
     private static object Validation(string field, string message) => new { errorCode = "VALIDATION_ERROR", message = "Dữ liệu không hợp lệ.", errors = new Dictionary<string, string[]> { [field] = [message] } };
+    // Chức năng: tạo response nguyên liệu có RowVersion.
+    // Input: RecipeIngredient. Output: object phản hồi.
     private static object IngredientResponse(RecipeIngredient x) => new { x.Id, x.Name, x.Quantity, x.Unit, x.Notes, x.OrderIndex, rowVersion = Convert.ToBase64String(x.RowVersion) };
+    // Chức năng: tạo response bước làm có RowVersion.
+    // Input: RecipeStep. Output: object phản hồi.
     private static object StepResponse(RecipeStep x) => new { x.Id, x.StepNumber, x.Title, x.Description, x.TimerMinutes, x.ImageUrl, rowVersion = Convert.ToBase64String(x.RowVersion) };
 }
 

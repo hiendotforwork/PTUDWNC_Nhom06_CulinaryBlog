@@ -1,3 +1,7 @@
+// Tệp này cung cấp form dùng chung để tạo mới và chỉnh sửa công thức.
+// Chức năng: CRUD dòng nguyên liệu, CRUD bước làm, kiểm tra dữ liệu (validateForm),
+// gửi dữ liệu tạo/cập nhật (handleSubmit) và render form (RecipeForm).
+
 "use client";
 
 import React, { useState } from "react";
@@ -16,6 +20,8 @@ export interface RecipeFormProps {
   isEditing?: boolean;
 }
 
+// Chức năng: hiển thị và điều phối form tạo hoặc chỉnh sửa công thức.
+// Input: initialData và isEditing. Output: React component form công thức.
 export const RecipeForm: React.FC<RecipeFormProps> = ({ initialData, isEditing = false }) => {
   const router = useRouter();
   const { categories, addRecipe, updateRecipe, showToast } = useApp();
@@ -60,6 +66,8 @@ export const RecipeForm: React.FC<RecipeFormProps> = ({ initialData, isEditing =
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Dynamic ingredient operations
+  // Chức năng: thêm một dòng nguyên liệu trống.
+  // Input: không có. Output: cập nhật state ingredients.
   const addIngredientRow = () => {
     setIngredients([
       ...ingredients,
@@ -67,12 +75,16 @@ export const RecipeForm: React.FC<RecipeFormProps> = ({ initialData, isEditing =
     ]);
   };
 
+  // Chức năng: cập nhật một trường của nguyên liệu.
+  // Input: id, field và value. Output: cập nhật state ingredients.
   const updateIngredientRow = (id: string, field: keyof Ingredient, value: string) => {
     setIngredients(
       ingredients.map((item) => (item.id === id ? { ...item, [field]: value } : item))
     );
   };
 
+  // Chức năng: xóa một dòng nguyên liệu khi form vẫn còn ít nhất một dòng.
+  // Input: id - mã dòng. Output: cập nhật state ingredients.
   const removeIngredientRow = (id: string) => {
     if (ingredients.length <= 1) {
       showToast("warning", "Công thức cần ít nhất một nguyên liệu.");
@@ -82,6 +94,8 @@ export const RecipeForm: React.FC<RecipeFormProps> = ({ initialData, isEditing =
   };
 
   // Dynamic steps operations
+  // Chức năng: thêm một bước thực hiện trống.
+  // Input: không có. Output: cập nhật state steps.
   const addStepRow = () => {
     setSteps([
       ...steps,
@@ -93,10 +107,14 @@ export const RecipeForm: React.FC<RecipeFormProps> = ({ initialData, isEditing =
     ]);
   };
 
+  // Chức năng: cập nhật nội dung một bước thực hiện.
+  // Input: id và description. Output: cập nhật state steps.
   const updateStepRow = (id: string, description: string) => {
     setSteps(steps.map((s) => (s.id === id ? { ...s, description } : s)));
   };
 
+  // Chức năng: xóa bước và đánh lại số thứ tự.
+  // Input: id - mã bước. Output: cập nhật state steps.
   const removeStepRow = (id: string) => {
     if (steps.length <= 1) {
       showToast("warning", "Công thức cần ít nhất một bước thực hiện.");
@@ -110,6 +128,8 @@ export const RecipeForm: React.FC<RecipeFormProps> = ({ initialData, isEditing =
     setSteps(reordered);
   };
 
+  // Chức năng: kiểm tra các trường bắt buộc trước khi lưu.
+  // Input: dữ liệu hiện tại trong form. Output: true nếu hợp lệ, ngược lại false.
   const validateForm = () => {
     const errs: Record<string, string> = {};
     if (!title.trim()) errs.title = "Tiêu đề công thức không được để trống";
@@ -122,6 +142,8 @@ export const RecipeForm: React.FC<RecipeFormProps> = ({ initialData, isEditing =
     return Object.keys(errs).length === 0;
   };
 
+  // Chức năng: tạo payload rồi gọi API tạo hoặc cập nhật công thức.
+  // Input: targetStatus - trạng thái Draft hoặc Published. Output: điều hướng đến trang chi tiết khi thành công.
   const handleSubmit = async (targetStatus: RecipeStatus) => {
     if (!validateForm()) {
       showToast("error", "Vui lòng hoàn thiện các trường thông tin bắt buộc.");

@@ -1,3 +1,6 @@
+// Tệp này là trang xem chi tiết công thức theo slug.
+// Chức năng: tải dữ liệu và render chi tiết công thức (RecipePage).
+
 "use client";
 
 import React, { use, useEffect, useState } from "react";
@@ -10,6 +13,8 @@ interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
+// Chức năng: tải công thức theo tham số URL và hiển thị RecipeDetailView.
+// Input: params chứa slug. Output: React component trang chi tiết hoặc trang 404.
 export default function RecipePage({ params }: PageProps) {
   const { slug } = use(params);
   const [recipe, setRecipe] = useState<Recipe | null>();

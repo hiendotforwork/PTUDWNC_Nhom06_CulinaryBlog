@@ -1,3 +1,7 @@
+// Tệp này cấu hình DbContext hợp nhất Identity và dữ liệu Recipe trong PostgreSQL/Supabase.
+// Chức năng: cung cấp DbSet, áp dụng mapping (OnModelCreating), audit/RowVersion (AuditRecipeEntities)
+// và chặn SaveChanges để tự cập nhật thông tin theo dõi.
+
 namespace CulinaryBlog.Infrastructure.Data;
 
 using CulinaryBlog.Domain.Entities;
@@ -12,8 +16,12 @@ using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
 
+// Class làm cổng truy cập database cho xác thực và module công thức.
+// Input: DbContextOptions. Output: DbContext có các DbSet và cấu hình schema tương ứng.
 public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityRole, string>
 {
+    // Chức năng: khởi tạo DbContext bằng cấu hình kết nối được DI cung cấp.
+    // Input: options. Output: instance ApplicationDbContext.
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
         : base(options)
     {
@@ -26,6 +34,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<RecipeStep> RecipeSteps => Set<RecipeStep>();
     public DbSet<RecipeImage> RecipeImages => Set<RecipeImage>();
 
+    // Chức năng: áp dụng cấu hình Identity, Recipe và chuyển Identity sang schema public.
+    // Input: ModelBuilder. Output: mô hình EF Core đã cấu hình.
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -51,6 +61,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
         }
     }
 
+    // Chức năng: gán UpdatedAt và RowVersion mới cho thực thể Recipe thay đổi.
+    // Input: các entity đang được ChangeTracker theo dõi. Output: cập nhật giá trị audit trong bộ nhớ.
     private void AuditRecipeEntities()
     {
         ChangeTracker.DetectChanges();
@@ -66,12 +78,16 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
         }
     }
 
+    // Chức năng: audit rồi lưu đồng bộ các thay đổi.
+    // Input: acceptAllChangesOnSuccess. Output: số bản ghi bị tác động.
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         AuditRecipeEntities();
         return base.SaveChanges(acceptAllChangesOnSuccess);
     }
 
+    // Chức năng: audit rồi lưu bất đồng bộ các thay đổi.
+    // Input: acceptAllChangesOnSuccess và cancellationToken. Output: Task chứa số bản ghi bị tác động.
     public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
         AuditRecipeEntities();

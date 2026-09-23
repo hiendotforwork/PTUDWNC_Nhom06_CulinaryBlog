@@ -1,3 +1,7 @@
+// Tệp này quản lý state dùng chung của ứng dụng; phần Recipe kết nối giao diện với API công thức.
+// Chức năng Recipe: tải lại danh sách (reloadRecipes), tạo (addRecipe), cập nhật (updateRecipe),
+// xóa (deleteRecipe), xuất bản/hủy xuất bản (publishRecipe) và lưu trữ/khôi phục (archiveRecipe).
+
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
@@ -96,6 +100,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
+  // Chức năng: tải công thức công khai và công thức của người dùng rồi hợp nhất kết quả.
+  // Input: không có. Output: cập nhật state recipes và categories.
   const reloadRecipes = async () => {
     try {
       const publicRecipes = await getRecipes(false);
@@ -140,6 +146,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     });
   };
 
+  // Chức năng: tạo công thức cùng nguyên liệu, bước làm và ảnh; sau đó xuất bản nếu được chọn.
+  // Input: recipeData - dữ liệu form. Output: Recipe đầy đủ vừa tạo.
   const addRecipe = async (recipeData: Omit<Recipe, "id" | "slug" | "createdAt" | "updatedAt" | "viewsCount" | "likesCount" | "author">): Promise<Recipe> => {
     const created = await createRecipe(recipeData);
     for (const item of recipeData.ingredients.filter((x) => x.name.trim())) await addIngredient(created.id, item);
@@ -160,6 +168,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     return result;
   };
 
+  // Chức năng: đồng bộ thông tin chính, nguyên liệu, bước làm, ảnh và trạng thái công thức.
+  // Input: id và recipeData. Output: Promise hoàn tất sau khi tải lại danh sách.
   const updateRecipe = async (id: string, recipeData: Partial<Recipe>) => {
     const current = recipes.find((x) => x.id === id);
     if (!current) throw new Error("Không tìm thấy công thức");
@@ -224,17 +234,23 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await reloadRecipes();
     showToast("success", "Đã cập nhật công thức thành công!");
   };
+  // Chức năng: xóa mềm công thức hiện tại.
+  // Input: id - mã công thức. Output: Promise hoàn tất sau khi tải lại danh sách.
   const deleteRecipe = async (id: string) => {
     const current = recipes.find((x) => x.id === id); if (!current?.rowVersion) return;
     await deleteRecipeApi(id, current.rowVersion); await reloadRecipes(); showToast("info", "Đã xóa công thức");
   };
 
+  // Chức năng: chuyển đổi giữa trạng thái xuất bản và bản nháp.
+  // Input: id - mã công thức. Output: Promise hoàn tất sau khi cập nhật.
   const publishRecipe = async (id: string) => {
     const current = recipes.find((x) => x.id === id); if (!current?.rowVersion) return;
     await mutateRecipe(id, current.status === "Published" ? "unpublish" : "publish", current.rowVersion); await reloadRecipes();
     showToast("success", current.status === "Published" ? "Đã hủy xuất bản" : "Công thức đã được xuất bản công khai!");
   };
 
+  // Chức năng: chuyển đổi giữa trạng thái lưu trữ và bản nháp.
+  // Input: id - mã công thức. Output: Promise hoàn tất sau khi cập nhật.
   const archiveRecipe = async (id: string) => {
     const current = recipes.find((x) => x.id === id); if (!current?.rowVersion) return;
     await mutateRecipe(id, current.status === "Archived" ? "unarchive" : "archive", current.rowVersion); await reloadRecipes(); showToast("warning", "Đã cập nhật trạng thái lưu trữ");
