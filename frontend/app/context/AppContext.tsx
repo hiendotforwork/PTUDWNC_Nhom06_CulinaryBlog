@@ -1,9 +1,30 @@
+// Tệp này quản lý state dùng chung của ứng dụng; phần Recipe kết nối giao diện với API công thức.
+// Chức năng Recipe: tải lại danh sách (reloadRecipes), tạo (addRecipe), cập nhật (updateRecipe),
+// xóa (deleteRecipe), xuất bản/hủy xuất bản (publishRecipe) và lưu trữ/khôi phục (archiveRecipe).
+
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { Recipe, User, ToastMessage, ToastType, Category, AuthResponse } from "../lib/types";
-import { INITIAL_RECIPES, MOCK_CATEGORIES, MOCK_USERS } from "../lib/mockData";
-import { register as apiRegister } from "../lib/api";
+import { MOCK_CATEGORIES, MOCK_USERS } from "../lib/mockData";
+import {
+  register as apiRegister,
+  getRecipes,
+  getRecipe,
+  createRecipe,
+  updateRecipeApi,
+  mutateRecipe,
+  deleteRecipeApi,
+  addIngredient,
+  updateIngredientApi,
+  deleteIngredientApi,
+  addStep,
+  updateStepApi,
+  deleteStepApi,
+  uploadRecipeImage,
+  deleteImageApi,
+  setPrimaryImageApi,
+} from "../lib/api";
 import * as auth from "../lib/auth";
 
 interface AppContextType {
@@ -13,11 +34,11 @@ interface AppContextType {
   categories: Category[];
   favorites: string[];
   toggleFavorite: (recipeId: string) => void;
-  addRecipe: (recipeData: Omit<Recipe, "id" | "slug" | "createdAt" | "updatedAt" | "viewsCount" | "likesCount" | "author">) => Recipe;
-  updateRecipe: (id: string, recipeData: Partial<Recipe>) => void;
-  deleteRecipe: (id: string) => void;
-  publishRecipe: (id: string) => void;
-  archiveRecipe: (id: string) => void;
+  addRecipe: (recipeData: Omit<Recipe, "id" | "slug" | "createdAt" | "updatedAt" | "viewsCount" | "likesCount" | "author">) => Promise<Recipe>;
+  updateRecipe: (id: string, recipeData: Partial<Recipe>) => Promise<void>;
+  deleteRecipe: (id: string) => Promise<void>;
+  publishRecipe: (id: string) => Promise<void>;
+  archiveRecipe: (id: string) => Promise<void>;
   login: (email: string, password?: string) => boolean;
   register: (data: { displayName: string; email: string; userName: string; password?: string }) => Promise<boolean>;
   logout: () => void;
@@ -34,50 +55,38 @@ function generateToastId(): string {
   return `toast-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-function generateRecipeId(): string {
-  return `rcp-${Date.now()}`;
-}
 
 function generateUserId(): string {
   return `usr-${Date.now()}`;
 }
 
-function generateRandomSuffix(): string {
-  return Math.random().toString(36).slice(2, 6);
-}
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   // Start with null; restore from localStorage via useEffect below
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-  // Restore auth state from localStorage on mount
+  // Restore auth state after hydration so server and browser render the same first frame.
   useEffect(() => {
-    const stored = auth.getStoredUser();
-    if (stored) {
-      setCurrentUser({
-        id: stored.id,
-        displayName: stored.displayName,
-        userName: stored.userName,
-        email: stored.email,
-        avatarUrl: stored.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
-        bio: stored.bio,
-        role: (stored.roles?.includes("Author") ? "User" : (stored.roles?.[0] as "User" | "Admin")) || "User",
-        createdAt: stored.createdAt || new Date().toISOString(),
-      });
-    }
+    const timer = window.setTimeout(() => {
+      const stored = auth.getStoredUser();
+      if (stored) {
+        setCurrentUser({
+          id: stored.id,
+          displayName: stored.displayName,
+          userName: stored.userName,
+          email: stored.email,
+          avatarUrl: stored.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
+          bio: stored.bio,
+          role: (stored.roles?.includes("Author") ? "User" : (stored.roles?.[0] as "User" | "Admin")) || "User",
+          createdAt: stored.createdAt || new Date().toISOString(),
+        });
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
 
-  const [recipes, setRecipes] = useState<Recipe[]>(() => {
-    if (typeof window === "undefined") return INITIAL_RECIPES;
-    try {
-      const saved = localStorage.getItem("culinary_recipes");
-      return saved ? JSON.parse(saved) : INITIAL_RECIPES;
-    } catch {
-      return INITIAL_RECIPES;
-    }
-  });
-
-  const [categories] = useState<Category[]>(MOCK_CATEGORIES);
+  const [categories, setCategories] = useState<Category[]>(MOCK_CATEGORIES);
 
   const [favorites, setFavorites] = useState<string[]>(() => {
     if (typeof window === "undefined") return ["rcp-1", "rcp-2"];
@@ -91,14 +100,23 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  const saveRecipes = (newRecipes: Recipe[]) => {
-    setRecipes(newRecipes);
+  // Chức năng: tải công thức công khai và công thức của người dùng rồi hợp nhất kết quả.
+  // Input: không có. Output: cập nhật state recipes và categories.
+  const reloadRecipes = async () => {
     try {
-      localStorage.setItem("culinary_recipes", JSON.stringify(newRecipes));
-    } catch {
-      // Ignore localStorage errors
-    }
+      const publicRecipes = await getRecipes(false);
+      const ownRecipes = auth.getToken() ? await getRecipes(true) : [];
+      const merged = [...ownRecipes, ...publicRecipes.filter((x) => !ownRecipes.some((o) => o.id === x.id))];
+      setRecipes(merged);
+      const unique = new Map(merged.map((x) => [x.category.id, x.category]));
+      setCategories([{ id: "all", name: "Tất cả", slug: "all", description: "", icon: "🍽️", recipeCount: merged.length }, ...unique.values()]);
+    } catch { /* API may be offline during static development. */ }
   };
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void reloadRecipes(), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const removeToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -128,58 +146,156 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     });
   };
 
-  const addRecipe = (
-    recipeData: Omit<Recipe, "id" | "slug" | "createdAt" | "updatedAt" | "viewsCount" | "likesCount" | "author">
-  ): Recipe => {
-    const slug = recipeData.title
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[đĐ]/g, "d")
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/(^-|-$)/g, "");
+  // Chức năng: tạo công thức cùng nguyên liệu, bước làm và ảnh; sau đó xuất bản nếu được chọn.
+  // Input: recipeData - dữ liệu form. Output: Recipe đầy đủ vừa tạo.
+  const addRecipe = async (recipeData: Omit<Recipe, "id" | "slug" | "createdAt" | "updatedAt" | "viewsCount" | "likesCount" | "author">): Promise<Recipe> => {
+    const created = await createRecipe(recipeData);
+    for (const item of recipeData.ingredients.filter((x) => x.name.trim())) await addIngredient(created.id, item);
+    for (const item of recipeData.steps.filter((x) => x.description.trim())) await addStep(created.id, item);
 
-    const newRecipe: Recipe = {
-      ...recipeData,
-      id: generateRecipeId(),
-      slug: `${slug}-${generateRandomSuffix()}`,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      viewsCount: 1,
-      likesCount: 0,
-      author: currentUser || MOCK_USERS[0],
-    };
+    const uploadedImages = new Map<string, Awaited<ReturnType<typeof uploadRecipeImage>>>();
+    for (const image of recipeData.images) {
+      if (image.file) uploadedImages.set(image.id, await uploadRecipeImage(created.id, image.file, image.caption));
+    }
+    const requestedPrimary = recipeData.images.find((image) => image.isPrimary);
+    const uploadedPrimary = requestedPrimary ? uploadedImages.get(requestedPrimary.id) : undefined;
+    if (uploadedPrimary && !uploadedPrimary.isPrimary) await setPrimaryImageApi(created.id, uploadedPrimary);
 
-    const updated = [newRecipe, ...recipes];
-    saveRecipes(updated);
+    if (recipeData.status === "Published") await mutateRecipe(created.id, "publish", created.rowVersion);
+    const result = await getRecipe(created.slug);
+    await reloadRecipes();
     showToast("success", "Công thức đã được lưu thành công!");
-    return newRecipe;
+    return result;
   };
 
-  const updateRecipe = (id: string, recipeData: Partial<Recipe>) => {
-    const updated = recipes.map((r) =>
-      r.id === id ? { ...r, ...recipeData, updatedAt: new Date().toISOString() } : r
-    );
-    saveRecipes(updated);
+  // Chức năng: đồng bộ thông tin chính, nguyên liệu, bước làm, ảnh và trạng thái công thức.
+  // Input: id và recipeData. Output: Promise hoàn tất sau khi tải lại danh sách.
+  const updateRecipe = async (id: string, recipeData: Partial<Recipe>) => {
+    const current = recipes.find((x) => x.id === id);
+    if (!current) throw new Error("Không tìm thấy công thức");
+
+    const existing = await getRecipe(current.slug);
+    if (!existing.rowVersion) throw new Error("Thiếu RowVersion của công thức");
+    const updated = await updateRecipeApi(id, recipeData, existing.rowVersion);
+
+    if (recipeData.ingredients) {
+      for (const oldItem of existing.ingredients) {
+        if (!recipeData.ingredients.some((item) => item.id === oldItem.id) && oldItem.rowVersion) {
+          await deleteIngredientApi(id, oldItem);
+        }
+      }
+      for (const [index, item] of recipeData.ingredients.entries()) {
+        if (!item.name.trim()) continue;
+        if (item.rowVersion) await updateIngredientApi(id, item, index);
+        else await addIngredient(id, item);
+      }
+    }
+
+    if (recipeData.steps) {
+      for (const oldItem of existing.steps) {
+        if (!recipeData.steps.some((item) => item.id === oldItem.id) && oldItem.rowVersion) {
+          await deleteStepApi(id, oldItem);
+        }
+      }
+      for (const item of recipeData.steps) {
+        if (!item.description.trim()) continue;
+        if (item.rowVersion) await updateStepApi(id, item);
+        else await addStep(id, item);
+      }
+    }
+
+    if (recipeData.images) {
+      for (const oldImage of existing.images) {
+        if (!recipeData.images.some((image) => image.id === oldImage.id) && oldImage.rowVersion) {
+          await deleteImageApi(id, oldImage);
+        }
+      }
+      const uploadedImages = new Map<string, Awaited<ReturnType<typeof uploadRecipeImage>>>();
+      for (const image of recipeData.images) {
+        if (image.file) uploadedImages.set(image.id, await uploadRecipeImage(id, image.file, image.caption));
+      }
+      const requestedPrimary = recipeData.images.find((image) => image.isPrimary);
+      const primaryTarget = requestedPrimary?.rowVersion
+        ? requestedPrimary
+        : requestedPrimary
+          ? uploadedImages.get(requestedPrimary.id)
+          : undefined;
+      const currentPrimaryId = existing.images.find((image) => image.isPrimary)?.id;
+      if (primaryTarget?.rowVersion && primaryTarget.id !== currentPrimaryId) {
+        await setPrimaryImageApi(id, primaryTarget);
+      }
+    }
+
+    if (recipeData.status === "Published" && existing.status !== "Published") {
+      await mutateRecipe(id, "publish", updated.rowVersion);
+    } else if (recipeData.status === "Draft" && existing.status === "Published") {
+      await mutateRecipe(id, "unpublish", updated.rowVersion);
+    }
+    await reloadRecipes();
     showToast("success", "Đã cập nhật công thức thành công!");
   };
-
-  const deleteRecipe = (id: string) => {
-    const updated = recipes.filter((r) => r.id !== id);
-    saveRecipes(updated);
-    showToast("info", "Đã xóa công thức");
+  // Chức năng: lấy thông báo từ lỗi API để hiển thị toast an toàn.
+  // Input: error và thông báo fallback. Output: chuỗi thông báo dễ hiểu.
+  const mutationErrorMessage = (error: unknown, fallback: string) => {
+    if (error instanceof Error) return error.message;
+    if (typeof error === "object" && error !== null && "message" in error) {
+      const message = (error as { message?: unknown }).message;
+      if (typeof message === "string" && message.trim()) return message;
+    }
+    return fallback;
   };
 
-  const publishRecipe = (id: string) => {
-    updateRecipe(id, { status: "Published" });
-    showToast("success", "Công thức đã được xuất bản công khai!");
+  // Chức năng: xóa mềm công thức hiện tại.
+  // Input: id - mã công thức. Output: Promise hoàn tất sau khi tải lại danh sách.
+  const deleteRecipe = async (id: string) => {
+    const current = recipes.find((x) => x.id === id);
+    if (!current?.rowVersion) return;
+    try {
+      await deleteRecipeApi(id, current.rowVersion);
+      await reloadRecipes();
+      showToast("info", "Đã xóa công thức");
+    } catch (error: unknown) {
+      showToast("error", mutationErrorMessage(error, "Không thể xóa công thức."));
+    }
   };
 
-  const archiveRecipe = (id: string) => {
-    updateRecipe(id, { status: "Archived" });
-    showToast("warning", "Đã lưu trữ công thức (ẩn khỏi trang chủ)");
+  // Chức năng: xuất bản, hủy xuất bản; công thức lưu trữ sẽ được khôi phục trước khi xuất bản.
+  // Input: id - mã công thức. Output: Promise hoàn tất sau khi cập nhật.
+  const publishRecipe = async (id: string) => {
+    const current = recipes.find((x) => x.id === id);
+    if (!current?.rowVersion) return;
+    try {
+      if (current.status === "Archived") {
+        const restored = await mutateRecipe(id, "unarchive", current.rowVersion);
+        await mutateRecipe(id, "publish", restored.rowVersion);
+        showToast("success", "Đã khôi phục và xuất bản lại công thức!");
+      } else if (current.status === "Published") {
+        await mutateRecipe(id, "unpublish", current.rowVersion);
+        showToast("success", "Đã hủy xuất bản");
+      } else {
+        await mutateRecipe(id, "publish", current.rowVersion);
+        showToast("success", "Công thức đã được xuất bản công khai!");
+      }
+      await reloadRecipes();
+    } catch (error: unknown) {
+      showToast("error", mutationErrorMessage(error, "Không thể cập nhật trạng thái xuất bản."));
+    }
   };
 
+  // Chức năng: chuyển đổi giữa trạng thái lưu trữ và bản nháp.
+  // Input: id - mã công thức. Output: Promise hoàn tất sau khi cập nhật.
+  const archiveRecipe = async (id: string) => {
+    const current = recipes.find((x) => x.id === id);
+    if (!current?.rowVersion) return;
+    try {
+      const restoring = current.status === "Archived";
+      await mutateRecipe(id, restoring ? "unarchive" : "archive", current.rowVersion);
+      await reloadRecipes();
+      showToast("warning", restoring ? "Đã khôi phục công thức về bản nháp" : "Đã lưu trữ công thức");
+    } catch (error: unknown) {
+      showToast("error", mutationErrorMessage(error, "Không thể cập nhật trạng thái lưu trữ."));
+    }
+  };
   const login = (email: string) => {
     const found = MOCK_USERS.find((u) => u.email.toLowerCase() === email.toLowerCase());
     const user = found || {
@@ -224,6 +340,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       };
 
       setCurrentUser(user);
+      await reloadRecipes();
       showToast("success", `Đăng ký thành công! Chào mừng ${user.displayName}`);
       return true;
     } catch (error: unknown) {

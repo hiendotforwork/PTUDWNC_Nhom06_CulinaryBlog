@@ -1,6 +1,13 @@
+// Tệp này khởi động Web API và đăng ký các dịch vụ dùng chung; phần Recipe cấu hình lệnh Lab 2, DbContext, lưu ảnh và static files.
+// Chức năng Recipe: migrate/seed/verify database theo tham số dòng lệnh và đăng ký LocalFileStorageService.
+
+using CulinaryBlog.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 using System.Text;
 using System.Threading.RateLimiting;
 using CulinaryBlog.API.Middleware;
+using CulinaryBlog.API.Services;
 using CulinaryBlog.Application.Commands.Auth.Register;
 using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Domain.Entities;
@@ -11,12 +18,29 @@ using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
+using AuthApplicationUser = CulinaryBlog.Domain.Entities.ApplicationUser;
 
 var builder = WebApplication.CreateBuilder(args);
-
+// Chức năng: nhận lệnh --lab2-migrate, --lab2-seed hoặc --lab2-verify để thao tác database.
+// Input: args của tiến trình và DefaultConnection. Output: migration/dữ liệu mẫu/kết quả kiểm tra rồi kết thúc tiến trình.
+var labCommand = args.FirstOrDefault(x => x.StartsWith("--lab2-"));
+if (labCommand is not null)
+{
+    if (labCommand is not ("--lab2-migrate" or "--lab2-seed" or "--lab2-verify"))
+        throw new ArgumentException("Unknown Lab 2 command.");
+    var connection = builder.Configuration.GetConnectionString("DefaultConnection");
+    if (string.IsNullOrWhiteSpace(connection))
+        throw new InvalidOperationException("Set ConnectionStrings__DefaultConnection locally; do not commit credentials.");
+var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(connection).Options;
+    await using var db = new ApplicationDbContext(options);
+    if (labCommand == "--lab2-migrate") await db.Database.MigrateAsync();
+    if (labCommand == "--lab2-seed") await Lab2Seeder.SeedAsync(db);
+    if (labCommand != "--lab2-migrate")
+        Console.WriteLine(JsonSerializer.Serialize(await Lab2Seeder.VerifyAsync(db), new JsonSerializerOptions { WriteIndented = true }));
+    return;
+}
 // Add services to the container.
 if (!builder.Environment.IsEnvironment("Testing"))
 {
@@ -31,7 +55,7 @@ if (!builder.Environment.IsEnvironment("Testing"))
 }
 
 // ASP.NET Core Identity Configuration
-builder.Services.AddIdentityCore<ApplicationUser>(options =>
+builder.Services.AddIdentityCore<AuthApplicationUser>(options =>
 {
     // Password settings (BR-AUTH-002)
     options.Password.RequiredLength = 8;
@@ -57,14 +81,15 @@ builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
+builder.Services.AddSingleton<IFileStorageService, LocalFileStorageService>();
 
 // MediatR & FluentValidation
 builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(RegisterCommand).Assembly));
 builder.Services.AddValidatorsFromAssembly(typeof(RegisterCommandValidator).Assembly);
 
 // JWT Authentication Configuration
-var jwtSecret = builder.Configuration["Jwt:Secret"] 
-    ?? builder.Configuration["Jwt:AccessTokenSecret"] 
+var jwtSecret = builder.Configuration["Jwt:Secret"]
+    ?? builder.Configuration["Jwt:AccessTokenSecret"]
     ?? "CulinaryBlogDefaultSuperSecretKeyForDevelopmentAndTestingPurposesOnly32Chars!";
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "CulinaryBlog";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "CulinaryBlogApp";
@@ -131,6 +156,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseStaticFiles();
 app.UseCors();
 app.UseRateLimiter();
 app.UseAuthentication();
