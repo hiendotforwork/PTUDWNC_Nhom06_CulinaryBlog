@@ -6,19 +6,20 @@ Hệ thống blog ẩm thực cho phép người dùng khám phá, tìm kiếm v
 
 | MSSV    | Họ và Tên              | GitHub         |
 | ------- | ---------------------- | -------------- |
-| 2312609 | Nguyễn Ngọc Thanh Hiền | hìedotforwork  |
+| 2312609 | Nguyễn Ngọc Thanh Hiền | hiendotforwork |
 | 2312756 | Nguyễn Hưng Thịnh      | elgthinhnguyen |
 | 2312588 | Ngô Văn Chương         | chuong-gif     |
 | 2312565 | Nguyễn Văn An          | NguyenAn124    |
 
 ## Phân công Module
 
-| Module  | Chức năng                     |
-| ------- | ----------------------------- |
-| FR-AUTH | Xác thực & Quản lý người dùng |
-| FR-SRCH | Tìm kiếm & Phân trang         |
-| FR-RCP  | Quản lý công thức nấu ăn      |
-| FR-CAT  | Quản lý danh mục              |
+| Module  | Chức năng                     | Người phụ trách |
+| ------- | ----------------------------- | --------------- |
+| FR-AUTH | Xác thực & Quản lý người dùng | 2312609         |
+| FR-SRCH | Tìm kiếm & Phân trang         | 2312756         |
+| FR-RCP  | Quản lý công thức nấu ăn      | 2312588         |
+| FR-CAT  | Quản lý danh mục              | 2312565         |
+| FR-FILE | Quản lý tệp tin               | 2312756         |
 
 ## Cấu trúc dự án
 
@@ -106,22 +107,25 @@ Frontend sẽ chạy tại `http://localhost:3000`
 ### Cấu hình Cơ sở dữ liệu (Supabase)
 
 #### 1. Thông số kết nối của nhóm
-* **Host:** `aws-0-ap-northeast-1.pooler.supabase.com`
-* **Port:** `5432` (Session Mode - bắt buộc cho EF Core)
-* **Database:** `postgres`
-* **Username:** `postgres.wflwzknzqaajqzzuwaxq`
-* **Password:** *(Liên hệ Hiền để nhận mật khẩu nội bộ)*
+
+- **Host:** `aws-0-ap-northeast-1.pooler.supabase.com`
+- **Port:** `5432` (Session Mode - bắt buộc cho EF Core)
+- **Database:** `postgres`
+- **Username:** `postgres.wflwzknzqaajqzzuwaxq`
+- **Password:** _(Liên hệ Hiền để nhận mật khẩu nội bộ)_
 
 #### 2. Cài đặt bằng một dòng lệnh (Khuyên dùng - Bảo mật tuyệt đối)
+
 Thành viên mở Terminal tại thư mục gốc dự án và chạy lệnh sau (thay `<mat_khau_db>` bằng mật khẩu được chia sẻ):
 
 ```bash
 dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=aws-0-ap-northeast-1.pooler.supabase.com;Port=5432;Database=postgres;Username=postgres.wflwzknzqaajqzzuwaxq;Password=<mat_khau_db>;SSL Mode=Require;Trust Server Certificate=true" --project src/CulinaryBlog.API
 ```
 
-*(Lệnh này lưu mật khẩu vào máy cá nhân ngoài cây thư mục Git, 100% không sợ bị commit lộ lên GitHub).*
+_(Lệnh này lưu mật khẩu vào máy cá nhân ngoài cây thư mục Git, 100% không sợ bị commit lộ lên GitHub)._
 
 #### 3. Cách phụ: Dùng `appsettings.Development.json`
+
 Nếu không dùng CLI, bạn có thể tạo/sửa file `src/CulinaryBlog.API/appsettings.Development.json`:
 
 ```json
