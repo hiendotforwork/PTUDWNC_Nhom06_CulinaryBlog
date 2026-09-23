@@ -10,7 +10,7 @@ import { Button } from "../components/ui/Button";
 
 export default function RegisterPage() {
   const router = useRouter();
-  const { register } = useApp();
+  const { register, showToast } = useApp();
 
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
@@ -20,24 +20,40 @@ export default function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     const newErrors: Record<string, string> = {};
 
+    // Client-side validation (mirrors backend)
     if (!displayName.trim() || displayName.length < 2) {
       newErrors.displayName = "Tên hiển thị phải có ít nhất 2 ký tự.";
+    } else if (displayName.length > 100) {
+      newErrors.displayName = "Tên hiển thị không quá 100 ký tự.";
     }
 
     if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      newErrors.email = "Vui lòng nhập email hợp lệ.";
+      newErrors.email = "Email không hợp lệ.";
     }
 
     if (!userName.trim() || userName.length < 3) {
-      newErrors.userName = "Tên đăng nhập từ 3 ký tự trở lên (chữ cái, số, gạch dưới).";
+      newErrors.userName = "Tên đăng nhập phải từ 3 ký tự trở lên.";
+    } else if (userName.length > 30) {
+      newErrors.userName = "Tên đăng nhập không quá 30 ký tự.";
+    } else if (!/^[a-zA-Z0-9_]+$/.test(userName)) {
+      newErrors.userName = "Chỉ chấp nhận chữ cái, số và dấu gạch dưới.";
     }
 
-    if (!password || password.length < 6) {
-      newErrors.password = "Mật khẩu phải từ 6 ký tự trở lên.";
+    // Password: 8+ chars, 1 uppercase, 1 lowercase, 1 digit, 1 special
+    if (password.length < 8) {
+      newErrors.password = "Mật khẩu phải từ 8 ký tự trở lên.";
+    } else if (!/[A-Z]/.test(password)) {
+      newErrors.password = "Mật khẩu phải có ít nhất 1 chữ hoa.";
+    } else if (!/[a-z]/.test(password)) {
+      newErrors.password = "Mật khẩu phải có ít nhất 1 chữ thường.";
+    } else if (!/[0-9]/.test(password)) {
+      newErrors.password = "Mật khẩu phải có ít nhất 1 chữ số.";
+    } else if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+      newErrors.password = "Mật khẩu phải có ít nhất 1 ký tự đặc biệt.";
     }
 
     if (password !== confirmPassword) {
@@ -52,24 +68,21 @@ export default function RegisterPage() {
     setErrors({});
     setIsLoading(true);
 
-    setTimeout(() => {
-      register({ displayName, email, userName, password });
-      setIsLoading(false);
+    try {
+      await register({ displayName, email, userName, password });
       router.push("/");
-    }, 400);
+    } catch (err: unknown) {
+      const error = err as { field?: string; message?: string };
+      if (error.field && error.message) {
+        setErrors({ [error.field]: error.message });
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleGoogleSignup = () => {
-    setIsLoading(true);
-    setTimeout(() => {
-      register({
-        displayName: "Người Yêu Bếp",
-        email: "google_user@culinaryblog.vn",
-        userName: "bep_viet",
-      });
-      setIsLoading(false);
-      router.push("/");
-    }, 400);
+    showToast("info", "Đăng ký Google đang được phát triển.");
   };
 
   return (
@@ -125,12 +138,13 @@ export default function RegisterPage() {
             <Input
               label="Mật khẩu"
               type="password"
-              placeholder="Tối thiểu 6 ký tự..."
+              placeholder="Tối thiểu 8 ký tự..."
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               error={errors.password}
               leftIcon={<Lock className="w-4 h-4" />}
+              helperText="8+ ký tự, có chữ hoa, chữ thường, số và ký tự đặc biệt"
             />
 
             <Input
