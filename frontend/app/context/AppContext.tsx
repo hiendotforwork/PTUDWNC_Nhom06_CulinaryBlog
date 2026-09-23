@@ -233,7 +233,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         showToast("error", msg);
         throw { message: msg };
       }
-      const apiError = error as { errorCode?: string; error?: string; errors?: Array<{ field: string; message: string }>; message?: string };
+      const apiError = error as { statusCode?: number; errorCode?: string; error?: string; errors?: Array<{ field: string; message: string }>; message?: string };
       const errCode = apiError.errorCode || apiError.error;
       if (errCode === "AUTH_EMAIL_EXISTS") {
         throw { field: "email", message: "Email đã được sử dụng" };
@@ -243,8 +243,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       }
       if (apiError.errors && apiError.errors.length > 0) {
         const firstError = apiError.errors[0];
-        const fieldName = firstError.field.charAt(0).toLowerCase() + firstError.field.slice(1);
+        let fieldName = firstError.field.charAt(0).toLowerCase() + firstError.field.slice(1);
+        if (fieldName.toLowerCase() === "username") fieldName = "userName";
+        if (fieldName.toLowerCase() === "displayname") fieldName = "displayName";
         throw { field: fieldName, message: firstError.message };
+      }
+      if (apiError.statusCode === 500) {
+        const msg = "Lỗi server, thử lại sau.";
+        showToast("error", msg);
+        throw { message: msg };
       }
       const message = apiError.message || "Đăng ký thất bại. Vui lòng thử lại.";
       showToast("error", message);
