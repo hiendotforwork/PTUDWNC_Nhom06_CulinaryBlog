@@ -1,8 +1,10 @@
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode } from "react";
-import { Recipe, User, ToastMessage, ToastType, Category } from "../lib/types";
+import { Recipe, User, ToastMessage, ToastType, Category, AuthResponse } from "../lib/types";
 import { INITIAL_RECIPES, MOCK_CATEGORIES, MOCK_USERS } from "../lib/mockData";
+import { register as apiRegister } from "../lib/api";
+import * as auth from "../lib/auth";
 
 interface AppContextType {
   currentUser: User | null;
@@ -17,7 +19,7 @@ interface AppContextType {
   publishRecipe: (id: string) => void;
   archiveRecipe: (id: string) => void;
   login: (email: string, password?: string) => boolean;
-  register: (data: { displayName: string; email: string; userName: string; password?: string }) => boolean;
+  register: (data: { displayName: string; email: string; userName: string; password?: string }) => Promise<boolean>;
   logout: () => void;
   updateProfile: (data: { displayName?: string; bio?: string; avatarUrl?: string }) => void;
   toasts: ToastMessage[];
@@ -45,8 +47,24 @@ function generateRandomSuffix(): string {
 }
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
-  // Default to logged-in user so the author flows work right out of the box
-  const [currentUser, setCurrentUser] = useState<User | null>(MOCK_USERS[0]);
+  // Initialize from stored auth on mount
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    if (typeof window === "undefined") return null;
+    const stored = auth.getStoredUser();
+    if (stored) {
+      return {
+        id: stored.id,
+        displayName: stored.displayName,
+        userName: stored.userName,
+        email: stored.email,
+        avatarUrl: stored.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
+        bio: stored.bio,
+        role: stored.role === "Author" ? "User" : (stored.role as "User" | "Admin"),
+        createdAt: stored.createdAt || new Date().toISOString(),
+      };
+    }
+    return null;
+  });
 
   const [recipes, setRecipes] = useState<Recipe[]>(() => {
     if (typeof window === "undefined") return INITIAL_RECIPES;
@@ -178,23 +196,57 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     return true;
   };
 
-  const register = (data: { displayName: string; email: string; userName: string }) => {
-    const newUser: User = {
-      id: generateUserId(),
-      displayName: data.displayName,
-      userName: data.userName,
-      email: data.email,
-      avatarUrl: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
-      bio: "Thành viên mới của cộng đồng Culinary Blog.",
-      role: "User",
-      createdAt: new Date().toISOString(),
-    };
-    setCurrentUser(newUser);
-    showToast("success", `Đăng ký thành công! Chào mừng ${newUser.displayName}`);
-    return true;
+  const register = async (data: { displayName: string; email: string; userName: string; password?: string }) => {
+    try {
+      const response: AuthResponse = await apiRegister({
+        email: data.email,
+        userName: data.userName,
+        displayName: data.displayName,
+        password: data.password || "",
+      });
+
+      // Store tokens and user
+      auth.setToken(response.accessToken);
+      auth.setRefreshToken(response.refreshToken);
+      auth.setStoredUser(response.user);
+
+      // Convert AuthUser to User for AppContext
+      const user: User = {
+        id: response.user.id,
+        displayName: response.user.displayName,
+        userName: response.user.userName,
+        email: response.user.email,
+        avatarUrl: response.user.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
+        bio: response.user.bio,
+        role: response.user.role === "Author" ? "User" : (response.user.role as "User" | "Admin"),
+        createdAt: response.user.createdAt || new Date().toISOString(),
+      };
+
+      setCurrentUser(user);
+      showToast("success", `Đăng ký thành công! Chào mừng ${user.displayName}`);
+      return true;
+    } catch (error: unknown) {
+      const apiError = error as { errorCode?: string; error?: string; errors?: Array<{ field: string; message: string }>; message?: string };
+      const errCode = apiError.errorCode || apiError.error;
+      if (errCode === "AUTH_EMAIL_EXISTS") {
+        throw { field: "email", message: "Email đã được sử dụng" };
+      }
+      if (errCode === "AUTH_USERNAME_EXISTS") {
+        throw { field: "userName", message: "Tên đăng nhập đã được sử dụng" };
+      }
+      if (apiError.errors && apiError.errors.length > 0) {
+        const firstError = apiError.errors[0];
+        const fieldName = firstError.field.charAt(0).toLowerCase() + firstError.field.slice(1);
+        throw { field: fieldName, message: firstError.message };
+      }
+      const message = apiError.message || "Đăng ký thất bại. Vui lòng thử lại.";
+      showToast("error", message);
+      throw { message };
+    }
   };
 
   const logout = () => {
+    auth.clearAuth();
     setCurrentUser(null);
     showToast("info", "Đã đăng xuất");
   };
