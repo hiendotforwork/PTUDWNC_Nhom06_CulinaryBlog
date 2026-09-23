@@ -61,6 +61,7 @@ schema, migrations và các ràng buộc vẫn tuân theo PostgreSQL.
 | NormalizedUserName   | varchar(256) | YES      | -   | -   | YES    | -       | Identity: normalized username                       | Identity                              |
 | Email                | varchar(256) | YES      | -   | -   | YES    | -       | Identity: Email                                     | FR-AUTH-001, FR-AUTH-002, FR-AUTH-003 |
 | NormalizedEmail      | varchar(256) | YES      | -   | -   | YES    | -       | Identity: normalized email                          | Identity                              |
+| EmailConfirmed       | boolean      | NO       | -   | -   | -      | FALSE   | Identity: Email đã được xác nhận (FR-AUTH-006)      | FR-AUTH-006                           |
 | PasswordHash         | varchar(500) | YES      | -   | -   | -      | -       | Identity: PBKDF2 hash                               | FR-AUTH-002                           |
 | SecurityStamp        | varchar(500) | YES      | -   | -   | -      | -       | Identity: security stamp (change on password reset) | Identity                              |
 | ConcurrencyStamp     | varchar(500) | YES      | -   | -   | -      | -       | Identity: concurrency token                         | Identity                              |
@@ -240,6 +241,7 @@ erDiagram
         string Email "Unique, nullable"
         string UserName "Unique, nullable"
         string PasswordHash "PBKDF2 hash"
+        bool EmailConfirmed "NOT NULL, default FALSE (FR-AUTH-006)"
         string DisplayName "NOT NULL"
         string AvatarUrl "nullable"
         text Bio "nullable"
@@ -331,6 +333,7 @@ CREATE TABLE "AspNetUsers" (
     "NormalizedUserName" varchar(256) NULL,
     "Email" varchar(256) NULL,
     "NormalizedEmail" varchar(256) NULL,
+    "EmailConfirmed" boolean NOT NULL DEFAULT FALSE,
     "PasswordHash" varchar(500) NULL,
     "SecurityStamp" varchar(500) NULL,
     "ConcurrencyStamp" varchar(500) NULL,
@@ -1021,6 +1024,7 @@ var stored = await _context.RefreshTokens
 | Id                   | ALL                                                | User identifier          |
 | Email                | FR-AUTH-001, FR-AUTH-002, FR-AUTH-003, FR-AUTH-006 | Login, unique identifier |
 | UserName             | FR-AUTH-001, FR-AUTH-006                           | Display identifier       |
+| EmailConfirmed       | FR-AUTH-006                                       | Email verification status|
 | PasswordHash         | FR-AUTH-002                                        | Password verification    |
 | DisplayName          | FR-AUTH-001, FR-AUTH-006, FR-AUTH-007              | Public display name      |
 | AvatarUrl            | FR-AUTH-001, FR-AUTH-006, FR-AUTH-007              | Profile image            |
