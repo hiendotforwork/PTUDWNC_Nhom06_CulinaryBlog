@@ -72,8 +72,10 @@ export default function RegisterPage() {
       await register({ displayName, email, userName, password });
       router.push("/");
     } catch (err: unknown) {
-      const error = err as { field?: string; message?: string };
-      if (error.field && error.message) {
+      const error = err as { fieldErrors?: Record<string, string>; field?: string; message?: string };
+      if (error.fieldErrors && Object.keys(error.fieldErrors).length > 0) {
+        setErrors(error.fieldErrors);
+      } else if (error.field && error.message) {
         setErrors({ [error.field]: error.message });
       }
     } finally {

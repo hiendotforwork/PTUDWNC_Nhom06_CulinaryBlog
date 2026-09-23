@@ -229,7 +229,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     } catch (error: unknown) {
       // Handle network errors (fetch throws TypeError)
       if (error instanceof TypeError && error.message.includes("fetch")) {
-        const msg = "Không thể kết nối server. Vui lòng kiểm tra kết nối mạng.";
+        const msg = "Không thể kết nối server";
         showToast("error", msg);
         throw { message: msg };
       }
@@ -242,14 +242,21 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         throw { field: "userName", message: "Tên đăng nhập đã được sử dụng" };
       }
       if (apiError.errors && apiError.errors.length > 0) {
+        const fieldErrors: Record<string, string> = {};
+        for (const err of apiError.errors) {
+          let fieldName = err.field.charAt(0).toLowerCase() + err.field.slice(1);
+          if (fieldName.toLowerCase() === "username") fieldName = "userName";
+          if (fieldName.toLowerCase() === "displayname") fieldName = "displayName";
+          fieldErrors[fieldName] = err.message;
+        }
         const firstError = apiError.errors[0];
-        let fieldName = firstError.field.charAt(0).toLowerCase() + firstError.field.slice(1);
-        if (fieldName.toLowerCase() === "username") fieldName = "userName";
-        if (fieldName.toLowerCase() === "displayname") fieldName = "displayName";
-        throw { field: fieldName, message: firstError.message };
+        let firstFieldName = firstError.field.charAt(0).toLowerCase() + firstError.field.slice(1);
+        if (firstFieldName.toLowerCase() === "username") firstFieldName = "userName";
+        if (firstFieldName.toLowerCase() === "displayname") firstFieldName = "displayName";
+        throw { fieldErrors, field: firstFieldName, message: firstError.message };
       }
       if (apiError.statusCode === 500) {
-        const msg = "Lỗi server, thử lại sau.";
+        const msg = "Lỗi server, thử lại sau";
         showToast("error", msg);
         throw { message: msg };
       }

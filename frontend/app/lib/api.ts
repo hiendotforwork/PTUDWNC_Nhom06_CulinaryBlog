@@ -6,8 +6,11 @@ async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const error: ApiError = await res.json().catch(() => ({
       statusCode: res.status,
-      message: "Lỗi không xác định từ máy chủ.",
+      message: res.status === 500 ? "Lỗi server, thử lại sau." : "Lỗi không xác định từ máy chủ.",
     }));
+    if (res.status === 500 && !error.message) {
+      error.message = "Lỗi server, thử lại sau.";
+    }
     throw error;
   }
   return res.json();
