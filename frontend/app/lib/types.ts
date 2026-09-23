@@ -80,3 +80,42 @@ export interface ToastMessage {
   message: string;
   duration?: number;
 }
+
+export interface AuthUser {
+  id: string;
+  displayName: string;
+  userName: string;
+  email: string;
+  avatarUrl?: string;
+  bio?: string;
+  roles?: string[];
+  role?: "Author" | "Admin" | "User";
+  createdAt?: string;
+}
+
+export interface RegisterRequest {
+  email: string;
+  userName: string;
+  displayName: string;
+  password: string;
+}
+
+export interface AuthResponse {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: string;
+  user: AuthUser;
+}
+
+export interface ApiValidationErrorDetail {
+  field: string;
+  message: string;
+}
+
+export interface ApiError {
+  statusCode?: number;
+  errorCode?: string;
+  error?: string;
+  message?: string;
+  errors?: ApiValidationErrorDetail[];
+}
