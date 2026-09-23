@@ -161,6 +161,94 @@ public sealed class RecipesController(ApplicationDbContext db) : ControllerBase
         return Ok(new RecipeMutationResponse(recipe.Id, recipe.Slug, recipe.Status, Convert.ToBase64String(recipe.RowVersion)));
     }
 
+    [HttpPost("{id:guid}/publish")]
+    [Authorize(Roles = AppRoles.Author + "," + AppRoles.Admin)]
+    public async Task<IActionResult> Publish(Guid id, VersionRequest request, CancellationToken ct)
+    {
+        var access = await EditableRecipe(id, ct); if (access.Result is not null) return access.Result;
+        var recipe = access.Value!;
+        if (recipe.Status == RecipeStatus.Archived)
+            return UnprocessableEntity(BusinessError("ARCHIVED_RECIPE", "Phải khôi phục công thức trước khi xuất bản."));
+        if (!await db.RecipeIngredients.AnyAsync(x => x.RecipeId == id, ct) || !await db.RecipeSteps.AnyAsync(x => x.RecipeId == id, ct))
+            return UnprocessableEntity(BusinessError("RECIPE_NOT_READY", "Công thức cần ít nhất một nguyên liệu và một bước thực hiện."));
+        return await ChangeStatus(recipe, request.RowVersion, RecipeStatus.Published, DateTimeOffset.UtcNow, ct);
+    }
+
+    [HttpPost("{id:guid}/unpublish")]
+    [Authorize(Roles = AppRoles.Author + "," + AppRoles.Admin)]
+    public async Task<IActionResult> Unpublish(Guid id, VersionRequest request, CancellationToken ct)
+    {
+        var access = await EditableRecipe(id, ct); if (access.Result is not null) return access.Result;
+        if (access.Value!.Status != RecipeStatus.Published)
+            return UnprocessableEntity(BusinessError("INVALID_RECIPE_STATUS", "Chỉ công thức Published mới có thể hủy xuất bản."));
+        return await ChangeStatus(access.Value, request.RowVersion, RecipeStatus.Draft, null, ct);
+    }
+
+    [HttpPost("{id:guid}/archive")]
+    [Authorize(Roles = AppRoles.Author + "," + AppRoles.Admin)]
+    public async Task<IActionResult> Archive(Guid id, VersionRequest request, CancellationToken ct)
+    {
+        var access = await EditableRecipe(id, ct); if (access.Result is not null) return access.Result;
+        if (access.Value!.Status == RecipeStatus.Archived)
+            return UnprocessableEntity(BusinessError("INVALID_RECIPE_STATUS", "Công thức đã được lưu trữ."));
+        return await ChangeStatus(access.Value, request.RowVersion, RecipeStatus.Archived, null, ct);
+    }
+
+    [HttpPost("{id:guid}/unarchive")]
+    [Authorize(Roles = AppRoles.Author + "," + AppRoles.Admin)]
+    public async Task<IActionResult> Unarchive(Guid id, VersionRequest request, CancellationToken ct)
+    {
+        var access = await EditableRecipe(id, ct); if (access.Result is not null) return access.Result;
+        if (access.Value!.Status != RecipeStatus.Archived)
+            return UnprocessableEntity(BusinessError("INVALID_RECIPE_STATUS", "Chỉ công thức Archived mới có thể khôi phục."));
+        return await ChangeStatus(access.Value, request.RowVersion, RecipeStatus.Draft, null, ct);
+    }
+
+    [HttpDelete("{id:guid}")]
+    [Authorize(Roles = AppRoles.Author + "," + AppRoles.Admin)]
+    public async Task<IActionResult> Delete(Guid id, VersionRequest request, CancellationToken ct)
+    {
+        var recipe = await db.Recipes.IgnoreQueryFilters().Include(x => x.Ingredients).Include(x => x.Steps).Include(x => x.Images)
+            .SingleOrDefaultAsync(x => x.Id == id && !x.IsDeleted, ct);
+        if (recipe is null) return NotFound();
+        if (recipe.AuthorId != CurrentUserId() && !User.IsInRole(AppRoles.Admin)) return Forbid();
+        if (!TryRowVersion(request.RowVersion, out var version, out var error)) return error!;
+        db.Entry(recipe).Property(x => x.RowVersion).OriginalValue = version!;
+        recipe.IsDeleted = true;
+        foreach (var item in recipe.Ingredients) item.IsDeleted = true;
+        foreach (var item in recipe.Steps) item.IsDeleted = true;
+        foreach (var item in recipe.Images) item.IsDeleted = true;
+        try { await db.SaveChangesAsync(ct); return NoContent(); }
+        catch (DbUpdateConcurrencyException) { return Conflict(ConcurrencyError()); }
+    }
+
+    private async Task<(Recipe? Value, IActionResult? Result)> EditableRecipe(Guid id, CancellationToken ct)
+    {
+        var recipe = await db.Recipes.SingleOrDefaultAsync(x => x.Id == id, ct);
+        if (recipe is null) return (null, NotFound());
+        return recipe.AuthorId == CurrentUserId() || User.IsInRole(AppRoles.Admin) ? (recipe, null) : (null, Forbid());
+    }
+
+    private async Task<IActionResult> ChangeStatus(Recipe recipe, string rowVersion, RecipeStatus status, DateTimeOffset? publishedAt, CancellationToken ct)
+    {
+        if (!TryRowVersion(rowVersion, out var version, out var error)) return error!;
+        db.Entry(recipe).Property(x => x.RowVersion).OriginalValue = version!;
+        recipe.Status = status; recipe.PublishedAt = publishedAt;
+        try
+        {
+            await db.SaveChangesAsync(ct);
+            return Ok(new RecipeMutationResponse(recipe.Id, recipe.Slug, recipe.Status, Convert.ToBase64String(recipe.RowVersion)));
+        }
+        catch (DbUpdateConcurrencyException) { return Conflict(ConcurrencyError()); }
+    }
+
+    private bool TryRowVersion(string text, out byte[]? version, out IActionResult? error)
+    {
+        try { version = Convert.FromBase64String(text); if (version.Length == 16) { error = null; return true; } } catch (FormatException) { }
+        version = null; error = UnprocessableEntity(new { errorCode = "INVALID_ROW_VERSION", message = "RowVersion không hợp lệ." }); return false;
+    }
+    private static object BusinessError(string code, string message) => new { errorCode = code, message };
+    private static object ConcurrencyError() => new { errorCode = "RECIPE_CONCURRENCY_CONFLICT", message = "Công thức đã được thay đổi bởi người khác." };
     private string? CurrentUserId() => User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
 
     private async Task<object?> ValidateRequest(string title, string description, int prepTime, int cookTime, int servings, RecipeDifficulty difficulty, Guid categoryId, CancellationToken cancellationToken)
