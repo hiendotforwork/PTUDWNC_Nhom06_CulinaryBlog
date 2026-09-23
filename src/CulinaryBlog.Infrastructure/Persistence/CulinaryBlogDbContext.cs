@@ -20,7 +20,14 @@ public sealed class CulinaryBlogDbContext(DbContextOptions<CulinaryBlogDbContext
         base.OnModelCreating(builder);
         // Separate from Supabase auth/storage/public schemas; access through .NET only.
         builder.HasDefaultSchema("culinary");
-        builder.ApplyConfigurationsFromAssembly(typeof(CulinaryBlogDbContext).Assembly);
+        // Limit this context to recipe mappings; assembly-wide scanning also loads auth mappings.
+        builder.ApplyConfiguration(new CategoryConfiguration());
+        builder.ApplyConfiguration(new RecipeConfiguration());
+        builder.ApplyConfiguration(new IngredientConfiguration());
+        builder.ApplyConfiguration(new StepConfiguration());
+        builder.ApplyConfiguration(new ImageConfiguration());
+        builder.ApplyConfiguration(new UserConfiguration());
+        builder.ApplyConfiguration(new RefreshTokenConfiguration());
     }
 
     private void Audit()

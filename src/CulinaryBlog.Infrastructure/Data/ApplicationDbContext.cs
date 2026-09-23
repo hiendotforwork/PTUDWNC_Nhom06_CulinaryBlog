@@ -1,6 +1,7 @@
 namespace CulinaryBlog.Infrastructure.Data;
 
 using CulinaryBlog.Domain.Entities;
+using CulinaryBlog.Infrastructure.Data.Configurations;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -17,6 +18,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
-        builder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);
+        // Limit this context to authentication mappings; the assembly also contains recipe mappings.
+        builder.ApplyConfiguration(new ApplicationUserConfiguration());
+        builder.ApplyConfiguration(new RefreshTokenConfiguration());
     }
 }
