@@ -88,7 +88,7 @@ export interface AuthUser {
   email: string;
   avatarUrl?: string;
   bio?: string;
-  roles?: string[];
+  roles: string[];  // e.g. ["Author"]
   role?: "Author" | "Admin" | "User";
   createdAt?: string;
 }
@@ -113,9 +113,9 @@ export interface ApiValidationErrorDetail {
 }
 
 export interface ApiError {
-  statusCode?: number;
-  errorCode?: string;
+  errorCode?: string;  // e.g. "AUTH_EMAIL_EXISTS", "AUTH_USERNAME_EXISTS"
   error?: string;
+  statusCode?: number;
   message?: string;
-  errors?: ApiValidationErrorDetail[];
+  errors?: Array<{ field: string; message: string }>;
 }

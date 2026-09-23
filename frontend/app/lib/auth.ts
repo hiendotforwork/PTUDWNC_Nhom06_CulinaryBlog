@@ -24,7 +24,7 @@ export function setRefreshToken(token: string): void {
   localStorage.setItem(REFRESH_KEY, token);
 }
 
-export function getStoredUser(): AuthUser | null {
+export function getStoredUser(): (AuthUser & { createdAt: string }) | null {
   if (typeof window === "undefined") return null;
   const data = localStorage.getItem(USER_KEY);
   try {
@@ -36,7 +36,9 @@ export function getStoredUser(): AuthUser | null {
 
 export function setStoredUser(user: AuthUser): void {
   if (typeof window === "undefined") return;
-  localStorage.setItem(USER_KEY, JSON.stringify(user));
+  // Add createdAt since backend doesn't return it
+  const userWithTimestamp = { ...user, createdAt: new Date().toISOString() };
+  localStorage.setItem(USER_KEY, JSON.stringify(userWithTimestamp));
 }
 
 export function clearAuth(): void {
