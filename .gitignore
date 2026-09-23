@@ -177,3 +177,4 @@ temp/
 # Output directories    
 #============================================================
 output/
+src/CulinaryBlog.API/wwwroot/uploads/

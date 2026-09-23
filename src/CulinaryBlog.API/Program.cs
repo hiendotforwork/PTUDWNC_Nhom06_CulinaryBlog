@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text;
 using System.Threading.RateLimiting;
 using CulinaryBlog.API.Middleware;
+using CulinaryBlog.API.Services;
 using CulinaryBlog.Application.Commands.Auth.Register;
 using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Domain.Entities;
@@ -75,6 +76,7 @@ builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
+builder.Services.AddSingleton<IFileStorageService, LocalFileStorageService>();
 
 // MediatR & FluentValidation
 builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(RegisterCommand).Assembly));
@@ -149,6 +151,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseStaticFiles();
 app.UseCors();
 app.UseRateLimiter();
 app.UseAuthentication();
