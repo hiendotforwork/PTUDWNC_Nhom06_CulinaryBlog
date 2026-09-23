@@ -1,6 +1,11 @@
 namespace CulinaryBlog.API.Controllers;
 
 using System.Security.Claims;
+using System.Globalization;
+using System.Text;
+using System.Text.RegularExpressions;
+using CulinaryBlog.Domain.Constants;
+using Microsoft.AspNetCore.Authorization;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Infrastructure.Data;
 using Microsoft.AspNetCore.Mvc;
@@ -25,7 +30,7 @@ public sealed class RecipesController(ApplicationDbContext db) : ControllerBase
         if (page < 1 || pageSize is < 1 or > 100)
             return BadRequest(new { errorCode = "INVALID_PAGINATION", message = "page phải >= 1 và pageSize từ 1 đến 100." });
 
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = CurrentUserId();
         var isAdmin = User.IsInRole("Admin");
         if (mine && userId is null) return Unauthorized();
 
@@ -80,7 +85,7 @@ public sealed class RecipesController(ApplicationDbContext db) : ControllerBase
             .SingleOrDefaultAsync(x => x.Slug == slug, cancellationToken);
         if (recipe is null) return NotFound();
 
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = CurrentUserId();
         if (recipe.Status != RecipeStatus.Published && recipe.AuthorId != userId && !User.IsInRole("Admin"))
             return NotFound();
 
@@ -96,6 +101,89 @@ public sealed class RecipesController(ApplicationDbContext db) : ControllerBase
             recipe.Images.OrderBy(x => x.OrderIndex).Select(x => new RecipeImageItem(x.Id, x.OriginalUrl, x.MediumUrl, x.ThumbnailUrl, x.AltText, x.IsPrimary, x.OrderIndex)),
             Convert.ToBase64String(recipe.RowVersion), recipe.CreatedAt, recipe.UpdatedAt));
     }
+    [HttpPost]
+    [Authorize(Roles = AppRoles.Author + "," + AppRoles.Admin)]
+    public async Task<IActionResult> Create(CreateRecipeRequest request, CancellationToken cancellationToken)
+    {
+        var validation = await ValidateRequest(request.Title, request.Description, request.PrepTime, request.CookTime, request.Servings, request.Difficulty, request.CategoryId, cancellationToken);
+        if (validation is not null) return UnprocessableEntity(validation);
+
+        var slugBase = Slugify(request.Title);
+        var slug = slugBase;
+        var suffix = 2;
+        while (await db.Recipes.IgnoreQueryFilters().AnyAsync(x => x.Slug == slug, cancellationToken))
+            slug = $"{slugBase}-{suffix++}";
+
+        var recipe = new Recipe
+        {
+            Title = request.Title.Trim(), Slug = slug, Description = request.Description.Trim(),
+            Instructions = request.Instructions?.Trim() ?? "", PrepTime = request.PrepTime,
+            CookTime = request.CookTime, Servings = request.Servings, Difficulty = request.Difficulty,
+            CategoryId = request.CategoryId, AuthorId = CurrentUserId()!, Status = RecipeStatus.Draft,
+            Nutrition = request.Nutrition ?? new RecipeNutrition()
+        };
+        db.Recipes.Add(recipe);
+        await db.SaveChangesAsync(cancellationToken);
+        return CreatedAtAction(nameof(GetBySlug), new { slug = recipe.Slug },
+            new RecipeMutationResponse(recipe.Id, recipe.Slug, recipe.Status, Convert.ToBase64String(recipe.RowVersion)));
+    }
+
+    [HttpPut("{id:guid}")]
+    [Authorize(Roles = AppRoles.Author + "," + AppRoles.Admin)]
+    public async Task<IActionResult> Update(Guid id, UpdateRecipeRequest request, CancellationToken cancellationToken)
+    {
+        byte[] expectedVersion;
+        try { expectedVersion = Convert.FromBase64String(request.RowVersion); }
+        catch (FormatException) { return UnprocessableEntity(new { errorCode = "INVALID_ROW_VERSION", message = "RowVersion phải là Base64 hợp lệ." }); }
+        if (expectedVersion.Length != 16)
+            return UnprocessableEntity(new { errorCode = "INVALID_ROW_VERSION", message = "RowVersion không đúng định dạng." });
+
+        var recipe = await db.Recipes.SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
+        if (recipe is null) return NotFound();
+        if (recipe.AuthorId != CurrentUserId() && !User.IsInRole(AppRoles.Admin)) return Forbid();
+
+        var validation = await ValidateRequest(request.Title, request.Description, request.PrepTime, request.CookTime, request.Servings, request.Difficulty, request.CategoryId, cancellationToken);
+        if (validation is not null) return UnprocessableEntity(validation);
+
+        db.Entry(recipe).Property(x => x.RowVersion).OriginalValue = expectedVersion;
+        recipe.Title = request.Title.Trim();
+        recipe.Description = request.Description.Trim();
+        recipe.Instructions = request.Instructions?.Trim() ?? "";
+        recipe.PrepTime = request.PrepTime; recipe.CookTime = request.CookTime;
+        recipe.Servings = request.Servings; recipe.Difficulty = request.Difficulty;
+        recipe.CategoryId = request.CategoryId; recipe.Nutrition = request.Nutrition ?? new RecipeNutrition();
+        try { await db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException)
+        {
+            var latest = await db.Recipes.AsNoTracking().Where(x => x.Id == id).Select(x => x.RowVersion).SingleOrDefaultAsync(cancellationToken);
+            return Conflict(new { errorCode = "RECIPE_CONCURRENCY_CONFLICT", message = "Công thức đã được thay đổi bởi người khác.", rowVersion = latest is null ? null : Convert.ToBase64String(latest) });
+        }
+        return Ok(new RecipeMutationResponse(recipe.Id, recipe.Slug, recipe.Status, Convert.ToBase64String(recipe.RowVersion)));
+    }
+
+    private string? CurrentUserId() => User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
+
+    private async Task<object?> ValidateRequest(string title, string description, int prepTime, int cookTime, int servings, RecipeDifficulty difficulty, Guid categoryId, CancellationToken cancellationToken)
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (string.IsNullOrWhiteSpace(title) || title.Trim().Length is < 5 or > 200) errors["title"] = ["Tiêu đề phải có từ 5 đến 200 ký tự."];
+        if (string.IsNullOrWhiteSpace(description) || description.Trim().Length > 2000) errors["description"] = ["Mô tả phải có từ 1 đến 2000 ký tự."];
+        if (prepTime <= 0) errors["prepTime"] = ["Thời gian chuẩn bị phải lớn hơn 0."];
+        if (cookTime < 0) errors["cookTime"] = ["Thời gian nấu không được âm."];
+        if (servings <= 0) errors["servings"] = ["Khẩu phần phải lớn hơn 0."];
+        if (!Enum.IsDefined(difficulty)) errors["difficulty"] = ["Độ khó không hợp lệ."];
+        if (!await db.Categories.AnyAsync(x => x.Id == categoryId, cancellationToken)) errors["categoryId"] = ["Danh mục không tồn tại."];
+        return errors.Count == 0 ? null : new { errorCode = "VALIDATION_ERROR", message = "Dữ liệu không hợp lệ.", errors };
+    }
+
+    private static string Slugify(string value)
+    {
+        var normalized = value.Trim().ToLowerInvariant().Normalize(NormalizationForm.FormD);
+        var builder = new StringBuilder();
+        foreach (var ch in normalized)
+            if (CharUnicodeInfo.GetUnicodeCategory(ch) != UnicodeCategory.NonSpacingMark) builder.Append(ch == 'đ' ? 'd' : ch);
+        return Regex.Replace(builder.ToString().Normalize(NormalizationForm.FormC), "[^a-z0-9]+", "-").Trim('-');
+    }
 }
 
 public sealed record RecipePageResponse(IReadOnlyList<RecipeListItem> Items, int TotalCount, int Page, int PageSize, int TotalPages, bool HasNextPage, bool HasPreviousPage);
@@ -104,3 +192,6 @@ public sealed record RecipeIngredientItem(Guid Id, string Name, decimal? Quantit
 public sealed record RecipeStepItem(Guid Id, int StepNumber, string Title, string Description, int? TimerMinutes, string? ImageUrl);
 public sealed record RecipeImageItem(Guid Id, string OriginalUrl, string? MediumUrl, string? ThumbnailUrl, string? AltText, bool IsPrimary, int OrderIndex);
 public sealed record RecipeDetailResponse(Guid Id, string Title, string Slug, string Description, string Instructions, int PrepTime, int CookTime, int Servings, RecipeDifficulty Difficulty, RecipeStatus Status, DateTimeOffset? PublishedAt, Guid CategoryId, string CategoryName, string AuthorId, string AuthorName, RecipeNutrition Nutrition, IEnumerable<RecipeIngredientItem> Ingredients, IEnumerable<RecipeStepItem> Steps, IEnumerable<RecipeImageItem> Images, string RowVersion, DateTimeOffset CreatedAt, DateTimeOffset? UpdatedAt);
+public sealed record CreateRecipeRequest(string Title, string Description, string? Instructions, int PrepTime, int CookTime, int Servings, RecipeDifficulty Difficulty, Guid CategoryId, RecipeNutrition? Nutrition);
+public sealed record UpdateRecipeRequest(string Title, string Description, string? Instructions, int PrepTime, int CookTime, int Servings, RecipeDifficulty Difficulty, Guid CategoryId, RecipeNutrition? Nutrition, string RowVersion);
+public sealed record RecipeMutationResponse(Guid Id, string Slug, RecipeStatus Status, string RowVersion);
