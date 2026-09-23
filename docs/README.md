@@ -22,7 +22,8 @@ docs/
 │       ├── FR-AUTH_ErrorCodes.md              # 6. Danh mục Mã lỗi & Chuẩn phản hồi
 │       ├── FR-AUTH_TestPlan.md                # 7. Kế hoạch & Ma trận kiểm thử
 │       ├── FR-AUTH-001_Design.md              # 8. Thiết kế chi tiết tính năng: Đăng ký
-│       └── FR-AUTH-001_Plan.md                # 9. Kế hoạch kiến trúc triển khai FR-AUTH-001
+│       ├── FR-AUTH-001_Plan.md                # 9. Kế hoạch kiến trúc triển khai FR-AUTH-001
+│       └── FR-AUTH-001_EndUser_Test_Scenarios.md # 10. Kịch bản kiểm thử người dùng cuối (UAT)
 └── superpowers/
     └── plans/
         └── 2026-09-23-fr-auth-001-implementation.md # [TẦNG 4] Kế hoạch thực thi TDD chi tiết
@@ -71,6 +72,8 @@ Thứ tự đọc logic khuyến nghị cho module Xác thực:
    *Nội dung:* Phân tích chuyên biệt cho tính năng Đăng ký tài khoản (FR-AUTH-001): Luồng hoạt động (Activity Diagram), quy tắc kiểm tra mật khẩu (Password Policy) và chuyển đổi trạng thái (State Machine).
 2. **[FR-AUTH-001_Plan.md](specs/fr-auth/FR-AUTH-001_Plan.md) — Kế hoạch Kiến trúc Triển khai**  
    *Nội dung:* Phân bổ công việc vào mô hình 4 tầng Clean Architecture (Domain, Application, Infrastructure, API Layer), danh sách 27 file cần tạo và các gói NuGet cần thiết.
+3. **[FR-AUTH-001_EndUser_Test_Scenarios.md](specs/fr-auth/FR-AUTH-001_EndUser_Test_Scenarios.md) — Kịch bản Kiểm thử Người dùng Cuối (UAT/Manual Test)**  
+   *Nội dung:* Bộ 21 kịch bản kiểm thử chi tiết từng bước cho Tester/Người dùng cuối: Happy path, client validation (BR-AUTH-002), 409 conflict, edge cases và biên bản nghiệm thu.
 
 ---
 
@@ -91,7 +94,7 @@ Thứ tự đọc logic khuyến nghị cho module Xác thực:
 | **Tech Lead / Solution Architect** | `SRS_Culinary_Blog_v1.0.0.md`, `FR-AUTH_BaoCao.md`, `FR-AUTH_Database_Design.md`, `FR-AUTH_SecuritySpec.md` |
 | **Backend Developer (.NET)** | `FR-AUTH_Database_Design.md`, `FR-AUTH_APIContract.md`, `FR-AUTH-001_Plan.md`, `2026-09-23-fr-auth-001-implementation.md` |
 | **Frontend Developer (Next.js)** | `UI_DESIGN_SPECIFICATION.md`, `FR-AUTH_APIContract.md`, `FR-AUTH_ErrorCodes.md` |
-| **QA / Test Engineer** | `FR-AUTH_TestPlan.md`, `FR-AUTH_APIContract.md`, `FR-AUTH_ErrorCodes.md` |
+| **QA / Test Engineer** | `FR-AUTH-001_EndUser_Test_Scenarios.md`, `FR-AUTH_TestPlan.md`, `FR-AUTH_APIContract.md`, `FR-AUTH_ErrorCodes.md` |
 | **DevOps / Security Specialist** | `FR-AUTH_SecuritySpec.md`, `FR-AUTH_LoggingSpec.md`, `FR-AUTH_Database_Design.md` |
 
 ---

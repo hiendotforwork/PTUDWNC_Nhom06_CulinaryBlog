@@ -19,6 +19,7 @@ Vui lòng tiếp cận tài liệu theo thứ tự sau để nắm bắt đầy 
 | **7** | [FR-AUTH_TestPlan.md](./FR-AUTH_TestPlan.md) | Kế hoạch & ma trận test cases kiểm thử đơn vị, tích hợp và bảo mật | QA, Backend |
 | **8** | [FR-AUTH-001_Design.md](./FR-AUTH-001_Design.md) | Thiết kế chi tiết riêng cho tính năng User Registration (FR-AUTH-001) | Backend, Frontend |
 | **9** | [FR-AUTH-001_Plan.md](./FR-AUTH-001_Plan.md) | Kế hoạch kiến trúc phân lớp Clean Architecture cho FR-AUTH-001 | Backend Developer |
+| **10** | [FR-AUTH-001_EndUser_Test_Scenarios.md](./FR-AUTH-001_EndUser_Test_Scenarios.md) | Kịch bản kiểm thử cho người dùng cuối (UAT / Manual Testing) | QA, Tester, End-User, PO |
 
 ---
 
