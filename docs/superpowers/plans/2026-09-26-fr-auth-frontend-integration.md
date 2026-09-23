@@ -17,10 +17,11 @@
 - API base URL: `http://localhost:5058`
 - Register endpoint: `POST /api/v1/auth/register`
 - Request: `{ email, userName, displayName, password }`
-- Success response 201: `{ accessToken, refreshToken, expiresAt, user }`
-- Error 409: `{ error: "AUTH_EMAIL_EXISTS" | "AUTH_USERNAME_EXISTS" }`
-- Error 422: `{ errors: [...] }` (validation)
+- Success response 201: `{ accessToken, refreshToken, expiresAt, user: UserDto }`
+- Error 409: `{ errorCode: "AUTH_EMAIL_EXISTS" | "AUTH_USERNAME_EXISTS", message: string }`
+- Error 422: `{ errorCode: "VALIDATION_ERROR", message: string, errors: [{ field: string, message: string }] }`
 - Password requirements: 8+ chars, 1 uppercase, 1 lowercase, 1 digit, 1 special char
+- UserDto: `{ id, email, userName, displayName, avatarUrl?, bio?, roles: string[] }`
 
 ---
 
@@ -72,8 +73,8 @@ export interface AuthUser {
   email: string;
   avatarUrl?: string;
   bio?: string;
-  role: "Author" | "Admin";
-  createdAt: string;
+  roles: string[];  // e.g. ["Author"]
+  // Note: createdAt not returned by backend, use Date.now() on frontend
 }
 
 export interface RegisterRequest {
@@ -91,9 +92,9 @@ export interface AuthResponse {
 }
 
 export interface ApiError {
-  error?: string;
-  errors?: Array<{ field: string; message: string }>;
+  errorCode?: string;  // e.g. "AUTH_EMAIL_EXISTS", "AUTH_USERNAME_EXISTS"
   message?: string;
+  errors?: Array<{ field: string; message: string }>;
 }
 ```
 
@@ -124,7 +125,7 @@ export function setRefreshToken(token: string): void {
   localStorage.setItem(REFRESH_KEY, token);
 }
 
-export function getStoredUser(): AuthUser | null {
+export function getStoredUser(): (AuthUser & { createdAt: string }) | null {
   if (typeof window === "undefined") return null;
   const data = localStorage.getItem(USER_KEY);
   return data ? JSON.parse(data) : null;
@@ -132,7 +133,9 @@ export function getStoredUser(): AuthUser | null {
 
 export function setStoredUser(user: AuthUser): void {
   if (typeof window === "undefined") return;
-  localStorage.setItem(USER_KEY, JSON.stringify(user));
+  // Add createdAt since backend doesn't return it
+  const userWithTimestamp = { ...user, createdAt: new Date().toISOString() };
+  localStorage.setItem(USER_KEY, JSON.stringify(userWithTimestamp));
 }
 
 export function clearAuth(): void {
@@ -185,8 +188,8 @@ git commit -m "feat(frontend): add API client and auth helpers"
 - [ ] **Step 1: Update imports**
 
 ```typescript
+import React, { useState, useEffect, ReactNode } from "react";
 import { Recipe, User, ToastMessage, ToastType, Category, AuthUser, AuthResponse } from "../lib/types";
-import { register as apiRegister, login as apiLogin } from "../lib/api";  // TODO: Task 3 will add login
 import * as auth from "../lib/auth";
 ```
 
@@ -217,26 +220,31 @@ const register = async (data: { displayName: string; email: string; userName: st
       email: response.user.email,
       avatarUrl: response.user.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
       bio: response.user.bio,
-      role: response.user.role === "Author" ? "User" : response.user.role as "User" | "Admin",
-      createdAt: response.user.createdAt,
+      role: (response.user.roles.includes("Author") ? "User" : response.user.roles[0]) as "User" | "Admin",
+      createdAt: new Date().toISOString(),
     };
 
     setCurrentUser(user);
     showToast("success", `Đăng ký thành công! Chào mừng ${user.displayName}`);
     return true;
   } catch (error: unknown) {
-    const apiError = error as { error?: string; errors?: Array<{ field: string; message: string }> };
-    if (apiError.error === "AUTH_EMAIL_EXISTS") {
+    // Handle network errors (fetch throws TypeError)
+    if (error instanceof TypeError && error.message.includes("fetch")) {
+      showToast("error", "Không thể kết nối server. Vui lòng kiểm tra kết nối mạng.");
+      return false;
+    }
+    const apiError = error as { errorCode?: string; errors?: Array<{ field: string; message: string }>; message?: string };
+    if (apiError.errorCode === "AUTH_EMAIL_EXISTS") {
       throw { field: "email", message: "Email đã được sử dụng" };
     }
-    if (apiError.error === "AUTH_USERNAME_EXISTS") {
+    if (apiError.errorCode === "AUTH_USERNAME_EXISTS") {
       throw { field: "userName", message: "Tên đăng nhập đã được sử dụng" };
     }
-    if (apiError.errors) {
+    if (apiError.errors && apiError.errors.length > 0) {
       const firstError = apiError.errors[0];
       throw { field: firstError.field.toLowerCase(), message: firstError.message };
     }
-    showToast("error", "Đăng ký thất bại. Vui lòng thử lại.");
+    showToast("error", apiError.message || "Đăng ký thất bại. Vui lòng thử lại.");
     return false;
   }
 };
@@ -269,27 +277,32 @@ const login = (email: string) => {
 
 - [ ] **Step 4: Initialize currentUser from localStorage**
 
-Add after line 49 (`useState<User | null>`):
+Replace the initial state line 49 (`const [currentUser, setCurrentUser] = useState<User | null>(MOCK_USERS[0])`):
 
 ```typescript
-// Initialize from stored auth on mount
-const [currentUser, setCurrentUser] = useState<User | null>(() => {
-  if (typeof window === "undefined") return MOCK_USERS[0];
+// Start with null; restore from localStorage via useEffect below
+const [currentUser, setCurrentUser] = useState<User | null>(null);
+```
+
+Add new useEffect after the state declarations (around line 73):
+
+```typescript
+// Restore auth state from localStorage on mount
+useEffect(() => {
   const stored = auth.getStoredUser();
   if (stored) {
-    return {
+    setCurrentUser({
       id: stored.id,
       displayName: stored.displayName,
       userName: stored.userName,
       email: stored.email,
       avatarUrl: stored.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
       bio: stored.bio,
-      role: stored.role === "Author" ? "User" : stored.role as "User" | "Admin",
-      createdAt: stored.createdAt,
-    };
+      role: (stored.roles.includes("Author") ? "User" : stored.roles[0]) as "User" | "Admin",
+      createdAt: new Date().toISOString(), // not stored, use current time
+    });
   }
-  return null; // Changed from MOCK_USERS[0] for clean auth state
-});
+}, []);
 ```
 
 - [ ] **Step 5: Update logout to clear tokens**
