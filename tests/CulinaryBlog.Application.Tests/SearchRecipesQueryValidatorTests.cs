@@ -1,6 +1,7 @@
 using CulinaryBlog.Application.Common.Models;
 using CulinaryBlog.Application.Recipes.Queries;
 using CulinaryBlog.Application.Recipes.Validation;
+using Xunit;
 
 namespace CulinaryBlog.Application.Tests;
 

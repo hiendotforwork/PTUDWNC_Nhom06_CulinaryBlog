@@ -4,6 +4,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using CulinaryBlog.Domain.Entities;
+using CulinaryBlog.Domain.Enums;
 using CulinaryBlog.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 

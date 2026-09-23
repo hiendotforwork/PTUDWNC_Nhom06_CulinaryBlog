@@ -40,7 +40,7 @@ public sealed class RecipeRepository(CulinaryBlogDbContext dbContext) : IRecipeR
 
         if (query.MaxCookTime.HasValue)
         {
-            recipes = recipes.Where(recipe => recipe.PrepTime + recipe.CookTime <= query.MaxCookTime.Value);
+            recipes = recipes.Where(recipe => recipe.CookTime <= query.MaxCookTime.Value);
         }
 
         if (query.MinServings.HasValue)
@@ -85,7 +85,7 @@ public sealed class RecipeRepository(CulinaryBlogDbContext dbContext) : IRecipeR
         var totalCount = await recipes.CountAsync(cancellationToken);
         var items = await recipes
             .OrderByDescending(recipe =>
-                EF.Functions.Rank(EF.Property<NpgsqlTsVector>(recipe, "SearchVector"), tsQuery))
+                EF.Property<NpgsqlTsVector>(recipe, "SearchVector").Rank(tsQuery))
             .ThenByDescending(recipe => recipe.CreatedAt)
             .ThenBy(recipe => recipe.Id)
             .Skip((query.Page - 1) * query.PageSize)
@@ -102,9 +102,7 @@ public sealed class RecipeRepository(CulinaryBlogDbContext dbContext) : IRecipeR
                 recipe.CategoryId,
                 recipe.Category.Name,
                 recipe.CreatedAt,
-                EF.Functions.Rank(
-                    EF.Property<NpgsqlTsVector>(recipe, "SearchVector"),
-                    tsQuery)))
+                EF.Property<NpgsqlTsVector>(recipe, "SearchVector").Rank(tsQuery)))
             .ToListAsync(cancellationToken);
 
         return PagedResult<RecipeSummaryDto>.Create(items, totalCount, query.Page, query.PageSize);

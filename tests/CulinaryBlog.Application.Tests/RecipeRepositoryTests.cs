@@ -4,6 +4,7 @@ using CulinaryBlog.Domain.Enums;
 using CulinaryBlog.Infrastructure.Persistence;
 using CulinaryBlog.Infrastructure.Recipes;
 using Microsoft.EntityFrameworkCore;
+using Xunit;
 
 namespace CulinaryBlog.Application.Tests;
 
@@ -39,6 +40,33 @@ public sealed class RecipeRepositoryTests
 
         Assert.Equal(1, result.TotalCount);
         Assert.Equal("quick-eggs", result.Items.Single().Slug);
+    }
+
+    [Fact]
+    public async Task FiltersByCookTimeWithoutIncludingPrepTime()
+    {
+        var category = new Category { Id = Guid.NewGuid(), Name = "Breakfast", Slug = "breakfast" };
+        await using var context = CreateContext(category);
+        context.Recipes.Add(new Recipe
+        {
+            Id = Guid.NewGuid(),
+            Slug = "long-prep-quick-cook",
+            Title = "Long Prep Quick Cook",
+            Description = "Recipe for testing cook time filtering",
+            PrepTime = 45,
+            CookTime = 10,
+            Servings = 2,
+            Difficulty = RecipeDifficulty.Easy,
+            Status = RecipeStatus.Published,
+            CategoryId = category.Id
+        });
+        await context.SaveChangesAsync();
+
+        var result = await CreateRepository(context).GetPublishedAsync(
+            new GetRecipesQuery(MaxCookTime: 10));
+
+        Assert.Single(result.Items);
+        Assert.Equal("long-prep-quick-cook", result.Items.Single().Slug);
     }
 
     [Fact]

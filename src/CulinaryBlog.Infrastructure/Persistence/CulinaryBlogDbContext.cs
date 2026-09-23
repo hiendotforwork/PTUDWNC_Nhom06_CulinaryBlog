@@ -1,19 +1,7 @@
 using CulinaryBlog.Domain.Entities;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using NpgsqlTypes;
-
-namespace CulinaryBlog.Infrastructure.Persistence;
-
-public sealed class CulinaryBlogDbContext(DbContextOptions<CulinaryBlogDbContext> options) : DbContext(options)
-{
-    public DbSet<Recipe> Recipes => Set<Recipe>();
-    public DbSet<Category> Categories => Set<Category>();
-
-    protected override void OnModelCreating(ModelBuilder modelBuilder)
-    {
-        modelBuilder.HasPostgresExtension("unaccent");
-
-using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using System.Security.Cryptography;
 
 namespace CulinaryBlog.Infrastructure.Persistence;
@@ -42,10 +30,18 @@ public sealed class CulinaryBlogDbContext(DbContextOptions<CulinaryBlogDbContext
         builder.ApplyConfiguration(new ImageConfiguration());
         builder.ApplyConfiguration(new UserConfiguration());
         builder.ApplyConfiguration(new RefreshTokenConfiguration());
-        builder.Entity<Recipe>().Property<NpgsqlTsVector>("SearchVector").HasColumnType("tsvector");
-        builder.Entity<Recipe>().HasIndex("SearchVector").HasDatabaseName("IX_Recipe_SearchVector").HasMethod("GIN");
+        if (Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
+        {
+            builder.Entity<Recipe>().Ignore("SearchVector");
+        }
+        else
+        {
+            builder.Entity<Recipe>().Property<NpgsqlTsVector>("SearchVector").HasColumnType("tsvector");
+            builder.Entity<Recipe>().HasIndex("SearchVector").HasDatabaseName("IX_Recipe_SearchVector").HasMethod("GIN");
+        }
     }
-}
+
+    private void Audit()
     {
         ChangeTracker.DetectChanges();
         foreach (var entry in ChangeTracker.Entries<BaseEntity>())
