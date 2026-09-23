@@ -24,7 +24,7 @@ public class ExceptionHandlingMiddleware
         }
         catch (Exception ex)
         {
-            if (ex is ValidationException or AuthConflictException or IdentityOperationException)
+            if (ex is ValidationException or AuthConflictException or IdentityOperationException or AuthException)
             {
                 _logger.LogWarning("Handled request exception: {Message}", ex.Message);
             }
@@ -43,6 +43,12 @@ public class ExceptionHandlingMiddleware
 
         var response = exception switch
         {
+            AuthException authEx => new ErrorResponse(
+                authEx.StatusCode,
+                authEx.ErrorCode,
+                authEx.Message,
+                null
+            ),
             AuthConflictException conflictEx => new ErrorResponse(
                 (int)HttpStatusCode.Conflict,
                 conflictEx.ErrorCode,

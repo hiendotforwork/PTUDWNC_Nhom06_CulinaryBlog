@@ -148,4 +148,101 @@ public class AuthControllerTests : IClassFixture<CustomWebApplicationFactory>
         jwt.Claims.First(c => c.Type == "name").Value.Should().Be(request.DisplayName);
         jwt.Claims.Where(c => c.Type == "roles" || c.Type == "role").Select(c => c.Value).Should().Contain("Author");
     }
+
+    [Fact]
+    public async Task Login_WithValidCredentials_Returns200OKWithTokens()
+    {
+        // Arrange - register user first
+        var registerRequest = CreateUniqueRegisterRequest("login_valid");
+        var regResponse = await _client.PostAsJsonAsync("/api/v1/auth/register", registerRequest);
+        regResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var loginRequest = new LoginRequest(registerRequest.Email, registerRequest.Password);
+
+        // Act
+        var loginResponse = await _client.PostAsJsonAsync("/api/v1/auth/login", loginRequest);
+
+        // Assert
+        loginResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var authResponse = await loginResponse.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions);
+        authResponse.Should().NotBeNull();
+        authResponse!.AccessToken.Should().NotBeNullOrWhiteSpace();
+        authResponse.RefreshToken.Should().NotBeNullOrWhiteSpace();
+        authResponse.User.Email.Should().Be(registerRequest.Email);
+    }
+
+    [Fact]
+    public async Task Login_WithInvalidPassword_Returns401Unauthorized()
+    {
+        // Arrange - register user first
+        var registerRequest = CreateUniqueRegisterRequest("login_wrongpwd");
+        var regResponse = await _client.PostAsJsonAsync("/api/v1/auth/register", registerRequest);
+        regResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var loginRequest = new LoginRequest(registerRequest.Email, "WrongPassword123!");
+
+        // Act
+        var loginResponse = await _client.PostAsJsonAsync("/api/v1/auth/login", loginRequest);
+
+        // Assert
+        loginResponse.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        var body = await loginResponse.Content.ReadAsStringAsync();
+        body.Should().Contain("AUTH_INVALID_CREDENTIALS");
+    }
+
+    [Fact]
+    public async Task Login_WithNonExistentEmail_Returns401Unauthorized()
+    {
+        // Arrange
+        var loginRequest = new LoginRequest("nonexistent_user_9999@culinaryblog.vn", "Password123!");
+
+        // Act
+        var loginResponse = await _client.PostAsJsonAsync("/api/v1/auth/login", loginRequest);
+
+        // Assert
+        loginResponse.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        var body = await loginResponse.Content.ReadAsStringAsync();
+        body.Should().Contain("AUTH_INVALID_CREDENTIALS");
+    }
+
+    [Fact]
+    public async Task Login_WithEmptyCredentials_Returns422UnprocessableEntity()
+    {
+        // Arrange
+        var loginRequest = new LoginRequest("", "");
+
+        // Act
+        var loginResponse = await _client.PostAsJsonAsync("/api/v1/auth/login", loginRequest);
+
+        // Assert
+        loginResponse.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        var body = await loginResponse.Content.ReadAsStringAsync();
+        body.Should().Contain("VALIDATION_ERROR");
+    }
+
+    [Fact]
+    public async Task Login_WhenLockedOutAfter5Attempts_Returns423Locked()
+    {
+        // Arrange - register user first
+        var registerRequest = CreateUniqueRegisterRequest("lockout_test");
+        var regResponse = await _client.PostAsJsonAsync("/api/v1/auth/register", registerRequest);
+        regResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var wrongLoginRequest = new LoginRequest(registerRequest.Email, "WrongPassword123!");
+
+        // Act: Fail 5 times to trigger lockout
+        for (var i = 0; i < 5; i++)
+        {
+            var res = await _client.PostAsJsonAsync("/api/v1/auth/login", wrongLoginRequest);
+            res.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        }
+
+        // 6th attempt should return 423 Locked
+        var lockedResponse = await _client.PostAsJsonAsync("/api/v1/auth/login", wrongLoginRequest);
+
+        // Assert
+        lockedResponse.StatusCode.Should().Be(HttpStatusCode.Locked);
+        var body = await lockedResponse.Content.ReadAsStringAsync();
+        body.Should().Contain("AUTH_ACCOUNT_LOCKED");
+    }
 }
