@@ -145,8 +145,4 @@ Nếu không dùng CLI, bạn có thể tạo/sửa file `src/CulinaryBlog.API/a
 
 ## Tài liệu tham khảo
 
-- 📖 **[Documentation Index & Reading Guide](./docs/README.md)** (Mục lục điều hướng và thứ tự đọc tài liệu)
-- [SRS Specification](./docs/specs/SRS_Culinary_Blog_v1.0.0.md)
-- [API Contract FR-AUTH](./docs/specs/fr-auth/FR-AUTH_APIContract.md)
-- [UI Design Spec](./docs/specs/UI_DESIGN_SPECIFICATION.md)
-- [Database Design FR-AUTH](./docs/specs/fr-auth/FR-AUTH_Database_Design.md)
+- 📖 **[Documentation Index & Reading Guide Module FR-AUTH](./docs/README.md)** (Mục lục điều hướng và thứ tự đọc tài liệu)
