@@ -1,24 +1,27 @@
 "use client";
 
-import React, { use } from "react";
+import React, { use, useEffect, useState } from "react";
 import { notFound } from "next/navigation";
-import { useApp } from "../../context/AppContext";
 import { RecipeDetailView } from "../../components/recipe/RecipeDetailView";
+import { getRecipe } from "../../lib/api";
+import { Recipe } from "../../lib/types";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
 export default function RecipePage({ params }: PageProps) {
-  const resolvedParams = use(params);
-  const { slug } = resolvedParams;
-  const { recipes } = useApp();
+  const { slug } = use(params);
+  const [recipe, setRecipe] = useState<Recipe | null>();
 
-  const recipe = recipes.find((r) => r.slug === slug || r.id === slug);
+  useEffect(() => {
+    getRecipe(slug).then(setRecipe).catch(() => setRecipe(null));
+  }, [slug]);
 
-  if (!recipe) {
-    notFound();
+  if (recipe === undefined) {
+    return <div className="max-w-7xl mx-auto px-4 py-16 text-center text-sm text-[#8A817C]">Đang tải công thức...</div>;
   }
+  if (recipe === null) notFound();
 
   return <RecipeDetailView recipe={recipe} />;
 }

@@ -26,6 +26,8 @@ export interface RecipeImage {
   url: string;
   isPrimary: boolean;
   caption?: string;
+  rowVersion?: string;
+  file?: File;
 }
 
 export interface Ingredient {
@@ -33,13 +35,17 @@ export interface Ingredient {
   amount: string;
   unit: string;
   name: string;
+  rowVersion?: string;
 }
 
 export interface RecipeStep {
   id: string;
   stepNumber: number;
+  title?: string;
   description: string;
+  timerMinutes?: number;
   imageUrl?: string;
+  rowVersion?: string;
 }
 
 export interface NutritionInfo {
@@ -69,6 +75,8 @@ export interface Recipe {
   updatedAt: string;
   viewsCount: number;
   likesCount: number;
+  rowVersion?: string;
+  instructions?: string;
 }
 
 export type ToastType = "success" | "error" | "warning" | "info";

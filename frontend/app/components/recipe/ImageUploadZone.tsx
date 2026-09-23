@@ -24,12 +24,12 @@ export const ImageUploadZone: React.FC<ImageUploadZoneProps> = ({
     if (!files || files.length === 0) return;
     setErrorMessage(null);
 
-    const validExtensions = ["image/jpeg", "image/png", "image/webp", "image/avif"];
+    const validExtensions = ["image/jpeg", "image/png", "image/webp"];
     const newImageList: RecipeImage[] = [...images];
 
     Array.from(files).forEach((file) => {
       if (!validExtensions.includes(file.type)) {
-        setErrorMessage("Chỉ hỗ trợ định dạng JPG, PNG, WEBP, hoặc AVIF.");
+        setErrorMessage("Chỉ hỗ trợ định dạng JPG, PNG hoặc WEBP.");
         return;
       }
       if (file.size > 5 * 1024 * 1024) {
@@ -48,6 +48,7 @@ export const ImageUploadZone: React.FC<ImageUploadZoneProps> = ({
           id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           url,
           isPrimary: newImageList.length === 0, // First image is primary by default
+          file,
         };
         newImageList.push(newImg);
         onChange([...newImageList]);
@@ -96,7 +97,7 @@ export const ImageUploadZone: React.FC<ImageUploadZoneProps> = ({
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/jpeg,image/png,image/webp,image/avif"
+          accept="image/jpeg,image/png,image/webp"
           multiple
           onChange={(e) => handleFiles(e.target.files)}
           className="hidden"

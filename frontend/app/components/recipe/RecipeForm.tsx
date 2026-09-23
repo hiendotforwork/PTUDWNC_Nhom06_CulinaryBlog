@@ -26,7 +26,7 @@ export const RecipeForm: React.FC<RecipeFormProps> = ({ initialData, isEditing =
     initialData?.category?.id || (categories.length > 1 ? categories[1].id : "")
   );
   const [prepTime, setPrepTime] = useState<number>(initialData?.prepTime || 20);
-  const [cookTime, setCookTime] = useState<number>(initialData?.cookTime || 30);
+  const [cookTime, setCookTime] = useState<number>(initialData?.cookTime ?? 30);
   const [servings, setServings] = useState<number>(initialData?.servings || 4);
   const [difficultyLevel, setDifficultyLevel] = useState<DifficultyLevel>(
     initialData?.difficultyLevel || "Medium"
@@ -117,13 +117,12 @@ export const RecipeForm: React.FC<RecipeFormProps> = ({ initialData, isEditing =
     if (prepTime <= 0) errs.prepTime = "Thời gian chuẩn bị phải lớn hơn 0";
     if (cookTime < 0) errs.cookTime = "Thời gian nấu không hợp lệ";
     if (servings <= 0) errs.servings = "Số lượng khẩu phần phải lớn hơn 0";
-    if (images.length === 0) errs.images = "Vui lòng tải lên ít nhất một hình ảnh món ăn";
 
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
 
-  const handleSubmit = (targetStatus: RecipeStatus) => {
+  const handleSubmit = async (targetStatus: RecipeStatus) => {
     if (!validateForm()) {
       showToast("error", "Vui lòng hoàn thiện các trường thông tin bắt buộc.");
       return;
@@ -157,17 +156,20 @@ export const RecipeForm: React.FC<RecipeFormProps> = ({ initialData, isEditing =
       nutrition,
     };
 
-    setTimeout(() => {
+    try {
       if (isEditing && initialData) {
-        updateRecipe(initialData.id, payload);
-        setIsSubmitting(false);
+        await updateRecipe(initialData.id, payload);
         router.push(`/recipes/${initialData.slug}`);
       } else {
-        const created = addRecipe(payload);
-        setIsSubmitting(false);
+        const created = await addRecipe(payload);
         router.push(`/recipes/${created.slug}`);
       }
-    }, 400);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Không thể lưu công thức.";
+      showToast("error", message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
