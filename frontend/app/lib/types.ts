@@ -134,4 +134,10 @@ export interface ApiError {
   statusCode?: number;
   message?: string;
   errors?: Array<{ field: string; message: string }>;
+  extensions?: {
+    code?: string;
+    retryAfterSeconds?: number;
+    unlockAt?: string;
+    [key: string]: unknown;
+  };
 }

@@ -41,11 +41,14 @@ export type ImageResponse = ApiImage & { orderIndex: number; rowVersion: string 
 // Input: res - phản hồi nhận từ API. Output: dữ liệu kiểu T hoặc lỗi ApiError.
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
-    const error: ApiError = await res.json().catch(() => ({
+    const errorData = await res.json().catch(() => ({}));
+    const error: ApiError = {
       statusCode: res.status,
-      message: res.status === 500 ? "Lỗi server, thử lại sau." : "Lỗi không xác định từ máy chủ.",
-    }));
-    if (res.status === 500 && !error.message) error.message = "Lỗi server, thử lại sau.";
+      errorCode: errorData.extensions?.code || errorData.errorCode,
+      message: errorData.detail || errorData.title || errorData.message || (res.status === 500 ? "Lỗi server, thử lại sau." : "Lỗi không xác định từ máy chủ."),
+      errors: errorData.errors,
+      extensions: errorData.extensions,
+    };
     throw error;
   }
   return res.json() as Promise<T>;
