@@ -9,6 +9,7 @@ import {
   AuthResponse,
   DifficultyLevel,
   Ingredient,
+  LoginRequest,
   Recipe,
   RecipeImage,
   RecipeStatus,
@@ -54,6 +55,17 @@ async function handleResponse<T>(res: Response): Promise<T> {
 // Input: data - thông tin đăng ký. Output: token và thông tin người dùng.
 export async function register(data: RegisterRequest): Promise<AuthResponse> {
   const res = await fetch(`${API_BASE}/api/v1/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return handleResponse<AuthResponse>(res);
+}
+
+// Chức năng: gửi yêu cầu đăng nhập tài khoản.
+// Input: data - thông tin đăng nhập. Output: token và thông tin người dùng.
+export async function login(data: LoginRequest): Promise<AuthResponse> {
+  const res = await fetch(`${API_BASE}/api/v1/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
