@@ -3,6 +3,7 @@ namespace CulinaryBlog.Infrastructure.Services;
 using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Domain.Entities;
 using Microsoft.AspNetCore.Identity;
+using SignInResult = CulinaryBlog.Application.Interfaces.SignInResult;
 
 public class UserRepository : IUserRepository
 {
@@ -51,5 +52,46 @@ public class UserRepository : IUserRepository
     public async Task<IList<string>> GetRolesAsync(ApplicationUser user)
     {
         return await _userManager.GetRolesAsync(user);
+    }
+
+    private static readonly string DummyHash = new PasswordHasher<ApplicationUser>().HashPassword(null!, "DummyPassword123!");
+
+    public async Task<SignInResult> CheckPasswordSignInAsync(
+        ApplicationUser user,
+        string password,
+        CancellationToken cancellationToken = default)
+    {
+        if (user.Email == "security-dummy@culinaryblog.vn")
+        {
+            _userManager.PasswordHasher.VerifyHashedPassword(user, DummyHash, password);
+            return new SignInResult(false);
+        }
+
+        if (await _userManager.IsLockedOutAsync(user))
+        {
+            var lockoutEnd = await _userManager.GetLockoutEndDateAsync(user);
+            return new SignInResult(
+                Succeeded: false,
+                IsLockedOut: true,
+                IsNotAllowed: false,
+                LockoutEnd: lockoutEnd?.UtcDateTime);
+        }
+
+        var isPasswordValid = await _userManager.CheckPasswordAsync(user, password);
+        if (!isPasswordValid)
+        {
+            await _userManager.AccessFailedAsync(user);
+            var isLocked = await _userManager.IsLockedOutAsync(user);
+            var lockoutEnd = isLocked ? await _userManager.GetLockoutEndDateAsync(user) : null;
+
+            return new SignInResult(
+                Succeeded: false,
+                IsLockedOut: isLocked,
+                IsNotAllowed: false,
+                LockoutEnd: lockoutEnd?.UtcDateTime);
+        }
+
+        await _userManager.ResetAccessFailedCountAsync(user);
+        return new SignInResult(Succeeded: true);
     }
 }
