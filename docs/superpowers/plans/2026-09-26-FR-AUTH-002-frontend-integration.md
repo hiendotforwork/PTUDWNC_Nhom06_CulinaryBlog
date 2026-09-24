@@ -56,7 +56,7 @@ frontend/app/
 - Consumes: Backend LoginRequest schema
 - Produces: LoginRequest type for API calls
 
-- [ ] **Step 1: Add LoginRequest and LoginResponse types**
+- [x] **Step 1: Add LoginRequest and LoginResponse types**
 
 ```typescript
 // Add after RegisterRequest (around line 107)
@@ -66,7 +66,7 @@ export interface LoginRequest {
 }
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 cd /media/thanhhien/DATA/PTUDWNC_Nhom06_CulinaryBlog
@@ -85,7 +85,7 @@ git commit -m "feat(frontend): add LoginRequest type for FR-AUTH-002"
 - Consumes: LoginRequest (email, password)
 - Produces: AuthResponse with tokens and user info
 
-- [ ] **Step 1: Add login function after register function**
+- [x] **Step 1: Add login function after register function**
 
 ```typescript
 // Add after register function (around line 62)
@@ -99,7 +99,7 @@ export async function login(data: LoginRequest): Promise<AuthResponse> {
 }
 ```
 
-- [ ] **Step 2: Add LoginRequest to imports**
+- [x] **Step 2: Add LoginRequest to imports**
 
 ```typescript
 // Update imports at top of file (around line 7-17)
@@ -117,7 +117,7 @@ import {
 } from "./types";
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add frontend/app/lib/api.ts
@@ -135,7 +135,7 @@ git commit -m "feat(frontend): add login API function for FR-AUTH-002"
 - Consumes: LoginRequest (email, password)
 - Produces: Updates currentUser state, stores tokens
 
-- [ ] **Step 1: Update imports to add login**
+- [x] **Step 1: Update imports to add login**
 
 ```typescript
 // Update import from api.ts (around line 10-27)
@@ -148,7 +148,7 @@ import {
 } from "../lib/api";
 ```
 
-- [ ] **Step 2: Replace mock login function (around line 299-314)**
+- [x] **Step 2: Replace mock login function (around line 299-314)**
 
 ```typescript
 // Replace the existing login function with this:
@@ -244,14 +244,14 @@ const login = async (email: string, password?: string): Promise<boolean> => {
 };
 ```
 
-- [ ] **Step 3: Update AppContextType interface**
+- [x] **Step 3: Update AppContextType interface**
 
 ```typescript
 // Update login signature in AppContextType (around line 42)
 login: (email: string, password?: string) => Promise<boolean>;
 ```
 
-- [ ] **Step 4: Update login page to handle async login**
+- [x] **Step 4: Update login page to handle async login**
 
 ```typescript
 // Update login/page.tsx - change handleLogin to async
@@ -286,7 +286,7 @@ const handleLogin = async (e: React.FormEvent) => {
 };
 ```
 
-- [ ] **Step 5: Update handleGoogleLogin similarly**
+- [x] **Step 5: Update handleGoogleLogin similarly**
 
 ```typescript
 // Update handleGoogleLogin in login/page.tsx
@@ -298,7 +298,7 @@ const handleGoogleLogin = async () => {
 };
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add frontend/app/context/AppContext.tsx frontend/app/login/page.tsx
@@ -316,7 +316,7 @@ git commit -m "feat(frontend): connect login to backend API for FR-AUTH-002"
 - Consumes: HTTP response (error case)
 - Produces: Error object with extensions preserved
 
-- [ ] **Step 1: Update handleResponse to include extensions**
+- [x] **Step 1: Update handleResponse to include extensions**
 
 ```typescript
 // Replace handleResponse error handling (around line 41-51)
@@ -335,7 +335,7 @@ async function handleResponse<T>(res: Response): Promise<T> {
 }
 ```
 
-- [ ] **Step 2: Update ApiError type in types.ts**
+- [x] **Step 2: Update ApiError type in types.ts**
 
 ```typescript
 // Update ApiError interface (around line 126-132)
@@ -354,7 +354,7 @@ export interface ApiError {
 }
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add frontend/app/lib/api.ts frontend/app/lib/types.ts
@@ -365,18 +365,18 @@ git commit -m "feat(frontend): preserve API error extensions for error handling"
 
 ### Task 5: Build and verify
 
-- [ ] **Step 1: Build frontend**
+- [x] **Step 1: Build frontend**
 
 ```bash
 cd /media/thanhhien/DATA/PTUDWNC_Nhom06_CulinaryBlog/frontend
 pnpm build
 ```
 
-- [ ] **Step 2: Verify no build errors**
+- [x] **Step 2: Verify no build errors**
 
 Expected: Build succeeded with no errors.
 
-- [ ] **Step 3: Start backend and test login**
+- [x] **Step 3: Start backend and test login**
 
 ```bash
 # Terminal 1: Start backend
@@ -388,7 +388,7 @@ cd /media/thanhhien/DATA/PTUDWNC_Nhom06_CulinaryBlog/frontend
 pnpm dev
 ```
 
-- [ ] **Step 4: Commit if needed**
+- [x] **Step 4: Commit if needed**
 
 ```bash
 git add -A && git commit -m "fix(frontend): resolve build errors in FR-AUTH-002 integration"
@@ -398,14 +398,14 @@ git add -A && git commit -m "fix(frontend): resolve build errors in FR-AUTH-002 
 
 ## Acceptance Criteria
 
-- [ ] Login page calls `POST /api/v1/auth/login`
-- [ ] Successful login stores tokens in localStorage
-- [ ] Successful login updates AppContext with user data
-- [ ] Failed login (401) shows "Email hoặc mật khẩu không đúng"
-- [ ] Locked account (423) shows unlock time
-- [ ] Rate limited (429) shows retry countdown
-- [ ] Network error shows "Không thể kết nối server"
-- [ ] Frontend builds without errors
+- [x] Login page calls `POST /api/v1/auth/login`
+- [x] Successful login stores tokens in localStorage
+- [x] Successful login updates AppContext with user data
+- [x] Failed login (401) shows "Email hoặc mật khẩu không đúng"
+- [x] Locked account (423) shows unlock time
+- [x] Rate limited (429) shows retry countdown
+- [x] Network error shows "Không thể kết nối server"
+- [x] Frontend builds without errors
 
 ---
 
