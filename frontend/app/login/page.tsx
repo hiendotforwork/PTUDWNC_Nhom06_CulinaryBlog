@@ -17,7 +17,7 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     const newErrors: Record<string, string> = {};
 
@@ -39,20 +39,16 @@ export default function LoginPage() {
     setErrors({});
     setIsLoading(true);
 
-    setTimeout(() => {
-      login(email, password);
-      setIsLoading(false);
+    const success = await login(email, password);
+    setIsLoading(false);
+
+    if (success) {
       router.push("/");
-    }, 400);
+    }
   };
 
   const handleGoogleLogin = () => {
-    setIsLoading(true);
-    setTimeout(() => {
-      login("google_user@culinaryblog.vn");
-      setIsLoading(false);
-      router.push("/");
-    }, 400);
+    showToast("info", "Đăng nhập Google đang được phát triển.");
   };
 
   return (

@@ -9,6 +9,7 @@ import {
   AuthResponse,
   DifficultyLevel,
   Ingredient,
+  LoginRequest,
   Recipe,
   RecipeImage,
   RecipeStatus,
@@ -40,11 +41,14 @@ export type ImageResponse = ApiImage & { orderIndex: number; rowVersion: string 
 // Input: res - phản hồi nhận từ API. Output: dữ liệu kiểu T hoặc lỗi ApiError.
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
-    const error: ApiError = await res.json().catch(() => ({
+    const errorData = await res.json().catch(() => ({}));
+    const error: ApiError = {
       statusCode: res.status,
-      message: res.status === 500 ? "Lỗi server, thử lại sau." : "Lỗi không xác định từ máy chủ.",
-    }));
-    if (res.status === 500 && !error.message) error.message = "Lỗi server, thử lại sau.";
+      errorCode: errorData.extensions?.code || errorData.errorCode,
+      message: errorData.detail || errorData.title || errorData.message || (res.status === 500 ? "Lỗi server, thử lại sau." : "Lỗi không xác định từ máy chủ."),
+      errors: errorData.errors,
+      extensions: errorData.extensions,
+    };
     throw error;
   }
   return res.json() as Promise<T>;
@@ -54,6 +58,17 @@ async function handleResponse<T>(res: Response): Promise<T> {
 // Input: data - thông tin đăng ký. Output: token và thông tin người dùng.
 export async function register(data: RegisterRequest): Promise<AuthResponse> {
   const res = await fetch(`${API_BASE}/api/v1/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return handleResponse<AuthResponse>(res);
+}
+
+// Chức năng: gửi yêu cầu đăng nhập tài khoản.
+// Input: data - thông tin đăng nhập. Output: token và thông tin người dùng.
+export async function login(data: LoginRequest): Promise<AuthResponse> {
+  const res = await fetch(`${API_BASE}/api/v1/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),

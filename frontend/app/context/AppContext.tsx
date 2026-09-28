@@ -9,6 +9,7 @@ import { Recipe, User, ToastMessage, ToastType, Category, AuthResponse } from ".
 import { MOCK_CATEGORIES, MOCK_USERS } from "../lib/mockData";
 import {
   register as apiRegister,
+  login as apiLogin,
   getRecipes,
   getRecipe,
   createRecipe,
@@ -39,7 +40,7 @@ interface AppContextType {
   deleteRecipe: (id: string) => Promise<void>;
   publishRecipe: (id: string) => Promise<void>;
   archiveRecipe: (id: string) => Promise<void>;
-  login: (email: string, password?: string) => boolean;
+  login: (email: string, password?: string) => Promise<boolean>;
   register: (data: { displayName: string; email: string; userName: string; password?: string }) => Promise<boolean>;
   logout: () => void;
   updateProfile: (data: { displayName?: string; bio?: string; avatarUrl?: string }) => void;
@@ -296,21 +297,95 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       showToast("error", mutationErrorMessage(error, "Không thể cập nhật trạng thái lưu trữ."));
     }
   };
-  const login = (email: string) => {
-    const found = MOCK_USERS.find((u) => u.email.toLowerCase() === email.toLowerCase());
-    const user = found || {
-      id: generateUserId(),
-      displayName: email.split("@")[0],
-      userName: email.split("@")[0].toLowerCase(),
-      email,
-      avatarUrl: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
-      bio: "Đầu bếp gia đình nhiệt huyết.",
-      role: "User",
-      createdAt: new Date().toISOString(),
-    };
-    setCurrentUser(user);
-    showToast("success", `Chào mừng trở lại, ${user.displayName}!`);
-    return true;
+  const login = async (email: string, password?: string): Promise<boolean> => {
+    if (!password) {
+      showToast("error", "Vui lòng nhập mật khẩu");
+      return false;
+    }
+
+    try {
+      const response = await apiLogin({ email, password });
+
+      // Store tokens and user
+      auth.setToken(response.accessToken);
+      auth.setRefreshToken(response.refreshToken);
+      auth.setStoredUser(response.user);
+
+      // Convert AuthUser to User for AppContext
+      const user: User = {
+        id: response.user.id,
+        displayName: response.user.displayName,
+        userName: response.user.userName,
+        email: response.user.email,
+        avatarUrl: response.user.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
+        bio: response.user.bio,
+        role: (response.user.roles?.includes("Author") ? "User" : (response.user.roles?.[0] as "User" | "Admin")) || "User",
+        createdAt: new Date().toISOString(),
+      };
+
+      setCurrentUser(user);
+      await reloadRecipes();
+      showToast("success", `Chào mừng trở lại, ${user.displayName}!`);
+      return true;
+    } catch (error: unknown) {
+      // Handle network errors (fetch throws TypeError)
+      if (error instanceof TypeError && error.message.includes("fetch")) {
+        showToast("error", "Không thể kết nối server");
+        return false;
+      }
+
+      // Handle API errors
+      const apiError = error as {
+        statusCode?: number;
+        errorCode?: string;
+        extensions?: { code?: string; retryAfterSeconds?: number; unlockAt?: string };
+        message?: string;
+      };
+
+      // Account locked (423)
+      if (apiError.statusCode === 423) {
+        const unlockAt = apiError.extensions?.unlockAt;
+        const retryAfter = apiError.extensions?.retryAfterSeconds;
+        let message = "Tài khoản đã bị khóa do đăng nhập sai nhiều lần.";
+        if (retryAfter) {
+          const minutes = Math.ceil(retryAfter / 60);
+          message = `Tài khoản đã bị khóa. Vui lòng thử lại sau ${minutes} phút.`;
+        } else if (unlockAt) {
+          const unlockTime = new Date(unlockAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+          message = `Tài khoản đã bị khóa. Vui lòng thử lại sau ${unlockTime}.`;
+        }
+        showToast("error", message);
+        return false;
+      }
+
+      // Rate limited (429)
+      if (apiError.statusCode === 429) {
+        const retryAfter = apiError.extensions?.retryAfterSeconds;
+        if (retryAfter) {
+          const seconds = Math.ceil(retryAfter);
+          showToast("warning", `Quá nhiều yêu cầu. Vui lòng chờ ${seconds} giây.`);
+        } else {
+          showToast("warning", "Quá nhiều yêu cầu. Vui lòng thử lại sau.");
+        }
+        return false;
+      }
+
+      // Invalid credentials (401) - generic message for security
+      if (apiError.statusCode === 401 || apiError.errorCode === "AUTH_INVALID_CREDENTIALS") {
+        showToast("error", "Email hoặc mật khẩu không đúng.");
+        return false;
+      }
+
+      // Validation error (422)
+      if (apiError.statusCode === 422) {
+        showToast("error", "Thông tin đăng nhập không hợp lệ.");
+        return false;
+      }
+
+      // Default error
+      showToast("error", apiError.message || "Đăng nhập thất bại. Vui lòng thử lại.");
+      return false;
+    }
   };
 
   const register = async (data: { displayName: string; email: string; userName: string; password?: string }) => {

@@ -2,6 +2,7 @@ namespace CulinaryBlog.Infrastructure.Services;
 
 using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 
 public class UnitOfWork : IUnitOfWork
@@ -13,14 +14,21 @@ public class UnitOfWork : IUnitOfWork
         _context = context;
     }
 
-    public async Task<IExecutionTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
+    public Task<IExecutionTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
+    {
+        return BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken);
+    }
+
+    public async Task<IExecutionTransaction> BeginTransactionAsync(
+        System.Data.IsolationLevel isolationLevel,
+        CancellationToken cancellationToken = default)
     {
         if (_context.Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
         {
             return new NoOpExecutionTransaction();
         }
 
-        var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+        var transaction = await _context.Database.BeginTransactionAsync(isolationLevel, cancellationToken);
         return new EfExecutionTransaction(transaction);
     }
 
