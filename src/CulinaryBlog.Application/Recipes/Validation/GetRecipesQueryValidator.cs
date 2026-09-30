@@ -48,6 +48,10 @@ public static class GetRecipesQueryValidator
             errors["minServings"] = ["minServings must be at least 1."];
         }
 
+        if (query.PageSize > 0 && ((long)query.Page - 1) * query.PageSize > int.MaxValue)
+            errors["page"] = ["page exceeds the supported pagination offset."];
+        if (query.Difficulty is not null && (!Enum.TryParse<CulinaryBlog.Domain.Enums.RecipeDifficulty>(query.Difficulty, true, out var difficulty) || !Enum.IsDefined(difficulty)))
+            errors["difficulty"] = ["difficulty must be Easy, Medium or Hard."];
         return errors;
     }
 }

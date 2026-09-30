@@ -9,6 +9,10 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using CulinaryBlog.Domain.Constants;
+using CulinaryBlog.Domain.Enums;
+using CulinaryBlog.Application.Interfaces;
+using CulinaryBlog.Application.Recipes.Queries;
+using CulinaryBlog.Application.Recipes.Validation;
 using Microsoft.AspNetCore.Authorization;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Infrastructure.Data;
@@ -19,7 +23,7 @@ using Microsoft.EntityFrameworkCore;
 [Route("api/v1/recipes")]
 // Class điều phối các endpoint FR-RCP-001 đến FR-RCP-007.
 // Input: ApplicationDbContext. Output: phản hồi HTTP chứa dữ liệu hoặc lỗi nghiệp vụ.
-public sealed class RecipesController(ApplicationDbContext db) : ControllerBase
+public sealed class RecipesController(ApplicationDbContext db, IFileDeletionQueue deletions) : ControllerBase
 {
     [HttpGet]
     // Chức năng: lấy danh sách công thức có phân trang, lọc và sắp xếp.
@@ -32,13 +36,23 @@ public sealed class RecipesController(ApplicationDbContext db) : ControllerBase
         [FromQuery] Guid? categoryId = null,
         [FromQuery] RecipeDifficulty? difficulty = null,
         [FromQuery] bool mine = false,
+        [FromQuery] int? minPrepTime = null,
+        [FromQuery] int? maxCookTime = null,
+        [FromQuery] int? minServings = null,
+        [FromQuery] string? sort = null,
         [FromQuery] string sortBy = "createdAt",
         [FromQuery] string sortOrder = "desc",
         CancellationToken cancellationToken = default)
     {
-        if (page < 1 || pageSize is < 1 or > 100)
-            return BadRequest(new { errorCode = "INVALID_PAGINATION", message = "page phải >= 1 và pageSize từ 1 đến 100." });
-
+        var canonicalSort = sort ?? ((sortOrder.Equals("asc", StringComparison.OrdinalIgnoreCase) ? "" : "-") + sortBy);
+        var query = new GetRecipesQuery(page, pageSize, categoryId, difficulty?.ToString(), minPrepTime, maxCookTime, minServings, canonicalSort);
+        var errors = GetRecipesQueryValidator.Validate(query);
+        // Keep existing frontend aliases for prepTime/publishedAt.
+        if (sort is null && (sortBy.Equals("prepTime", StringComparison.OrdinalIgnoreCase) || sortBy.Equals("publishedAt", StringComparison.OrdinalIgnoreCase)))
+            errors.Remove("sort");
+        if (!sortOrder.Equals("asc", StringComparison.OrdinalIgnoreCase) && !sortOrder.Equals("desc", StringComparison.OrdinalIgnoreCase))
+            errors["sortOrder"] = ["sortOrder must be asc or desc."];
+        if (errors.Count > 0) return UnprocessableEntity(new ValidationProblemDetails(errors));
         var userId = CurrentUserId();
         var isAdmin = User.IsInRole("Admin");
         if (mine && userId is null) return Unauthorized();
@@ -56,7 +70,11 @@ public sealed class RecipesController(ApplicationDbContext db) : ControllerBase
         if (categoryId.HasValue) recipes = recipes.Where(x => x.CategoryId == categoryId);
         if (difficulty.HasValue) recipes = recipes.Where(x => x.Difficulty == difficulty);
 
-        var descending = !string.Equals(sortOrder, "asc", StringComparison.OrdinalIgnoreCase);
+        if (minPrepTime.HasValue) recipes = recipes.Where(x => x.PrepTime >= minPrepTime);
+        if (maxCookTime.HasValue) recipes = recipes.Where(x => x.CookTime <= maxCookTime);
+        if (minServings.HasValue) recipes = recipes.Where(x => x.Servings >= minServings);
+        var descending = canonicalSort.StartsWith('-');
+        sortBy = canonicalSort.TrimStart('-');
         recipes = sortBy.ToLowerInvariant() switch
         {
             "title" => descending ? recipes.OrderByDescending(x => x.Title) : recipes.OrderBy(x => x.Title),
@@ -67,6 +85,7 @@ public sealed class RecipesController(ApplicationDbContext db) : ControllerBase
             _ => throw new BadHttpRequestException("sortBy không hợp lệ.")
         };
 
+        recipes = ((IOrderedQueryable<Recipe>)recipes).ThenBy(x => x.Id);
         var totalCount = await recipes.CountAsync(cancellationToken);
         var items = await (from recipe in recipes
                            join author in db.Users.AsNoTracking() on recipe.AuthorId equals author.Id
@@ -239,6 +258,9 @@ public sealed class RecipesController(ApplicationDbContext db) : ControllerBase
         if (recipe.AuthorId != CurrentUserId() && !User.IsInRole(AppRoles.Admin)) return Forbid();
         if (!TryRowVersion(request.RowVersion, out var version, out var error)) return error!;
         db.Entry(recipe).Property(x => x.RowVersion).OriginalValue = version!;
+        foreach (var url in recipe.Images.SelectMany(x => new[] { x.OriginalUrl, x.MediumUrl, x.ThumbnailUrl })
+            .Concat(recipe.Steps.Select(x => x.ImageUrl)).Where(x => !string.IsNullOrEmpty(x)).Distinct())
+            deletions.Enqueue(url!);
         recipe.IsDeleted = true;
         foreach (var item in recipe.Ingredients) item.IsDeleted = true;
         foreach (var item in recipe.Steps) item.IsDeleted = true;

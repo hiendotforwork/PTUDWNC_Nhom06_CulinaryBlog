@@ -16,9 +16,14 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
 
         builder.ConfigureServices(services =>
         {
+            services.AddSingleton<TestFileStorage>();
+            services.AddSingleton<CulinaryBlog.Application.Interfaces.IFileStorageService>(sp => sp.GetRequiredService<TestFileStorage>());
+            services.AddSingleton<CulinaryBlog.Application.Interfaces.IFileDeletionQueue>(sp => sp.GetRequiredService<TestFileStorage>());
             services.AddDbContext<ApplicationDbContext>(options =>
             {
                 options.UseInMemoryDatabase(_databaseName);
+                // InMemory cannot validate relational transactions; PostgreSQL checks cover those separately.
+                options.ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.InMemoryEventId.TransactionIgnoredWarning));
             });
         });
     }

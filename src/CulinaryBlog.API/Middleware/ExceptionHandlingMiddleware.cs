@@ -43,6 +43,9 @@ public class ExceptionHandlingMiddleware
 
         var response = exception switch
         {
+            InvalidImageException imageEx => new ErrorResponse(422, "INVALID_IMAGE", imageEx.Message, null),
+            FileStorageException => new ErrorResponse(503, "FILE_STORAGE_UNAVAILABLE", "Kho tệp tạm thời không khả dụng.", null),
+            BadHttpRequestException badRequest => new ErrorResponse(badRequest.StatusCode, "INVALID_REQUEST", badRequest.Message, null),
             AuthConflictException conflictEx => new ErrorResponse(
                 (int)HttpStatusCode.Conflict,
                 conflictEx.ErrorCode,
