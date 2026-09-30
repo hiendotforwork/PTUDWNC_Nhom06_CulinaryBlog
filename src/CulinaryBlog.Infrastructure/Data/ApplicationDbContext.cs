@@ -1,4 +1,4 @@
-// Tệp này cấu hình DbContext hợp nhất Identity và dữ liệu Recipe trong PostgreSQL/Supabase.
+// Tệp này cấu hình DbContext hợp nhất Identity và dữ liệu Recipe trong PostgreSQL chạy trong Docker.
 // Chức năng: cung cấp DbSet, áp dụng mapping (OnModelCreating), audit/RowVersion (AuditRecipeEntities)
 // và chặn SaveChanges để tự cập nhật thông tin theo dõi.
 
@@ -47,7 +47,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
         builder.ApplyConfiguration(new RecipeIngredientConfiguration());
         builder.ApplyConfiguration(new RecipeStepConfiguration());
         builder.ApplyConfiguration(new RecipeImageConfiguration());
-        if (!Database.IsNpgsql()) builder.Entity<Recipe>().Ignore("SearchVector");
+        if (!Database.IsNpgsql())
+            builder.Entity<Recipe>().Ignore("SearchVector");
     }
 
     // Chức năng: gán UpdatedAt và RowVersion mới cho thực thể Recipe thay đổi.

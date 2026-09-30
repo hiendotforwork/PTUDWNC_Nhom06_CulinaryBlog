@@ -148,4 +148,107 @@ public class AuthControllerTests : IClassFixture<CustomWebApplicationFactory>
         jwt.Claims.First(c => c.Type == "name").Value.Should().Be(request.DisplayName);
         jwt.Claims.Where(c => c.Type == "roles" || c.Type == "role").Select(c => c.Value).Should().Contain("Author");
     }
+
+    [Fact]
+    public async Task Login_WithValidCredentials_Returns200OKWithTokens()
+    {
+        // Arrange - register user first
+        var registerRequest = CreateUniqueRegisterRequest("login_valid");
+        var regResponse = await _client.PostAsJsonAsync("/api/v1/auth/register", registerRequest);
+        regResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var loginRequest = new LoginRequest(registerRequest.Email, registerRequest.Password);
+
+        // Act
+        var loginResponse = await _client.PostAsJsonAsync("/api/v1/auth/login", loginRequest);
+
+        // Assert
+        loginResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var authResponse = await loginResponse.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions);
+        authResponse.Should().NotBeNull();
+        authResponse!.AccessToken.Should().NotBeNullOrWhiteSpace();
+        authResponse.RefreshToken.Should().NotBeNullOrWhiteSpace();
+        authResponse.User.Email.Should().Be(registerRequest.Email);
+    }
+
+    [Fact]
+    public async Task Login_WithInvalidPassword_Returns401Unauthorized()
+    {
+        // Arrange - register user first
+        var registerRequest = CreateUniqueRegisterRequest("login_wrongpwd");
+        var regResponse = await _client.PostAsJsonAsync("/api/v1/auth/register", registerRequest);
+        regResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var loginRequest = new LoginRequest(registerRequest.Email, "WrongPassword123!");
+
+        // Act
+        var loginResponse = await _client.PostAsJsonAsync("/api/v1/auth/login", loginRequest);
+
+        // Assert
+        loginResponse.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        var body = await loginResponse.Content.ReadAsStringAsync();
+        body.Should().Contain("AUTH_INVALID_CREDENTIALS");
+    }
+
+    [Fact]
+    public async Task Login_WithNonExistentEmail_Returns401Unauthorized()
+    {
+        // Arrange
+        var loginRequest = new LoginRequest("nonexistent_user_9999@culinaryblog.vn", "Password123!");
+
+        // Act
+        var loginResponse = await _client.PostAsJsonAsync("/api/v1/auth/login", loginRequest);
+
+        // Assert
+        loginResponse.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        var body = await loginResponse.Content.ReadAsStringAsync();
+        body.Should().Contain("AUTH_INVALID_CREDENTIALS");
+    }
+
+    [Fact]
+    public async Task Login_WithEmptyCredentials_Returns422UnprocessableEntity()
+    {
+        // Arrange
+        var loginRequest = new LoginRequest("", "");
+
+        // Act
+        var loginResponse = await _client.PostAsJsonAsync("/api/v1/auth/login", loginRequest);
+
+        // Assert
+        loginResponse.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        var body = await loginResponse.Content.ReadAsStringAsync();
+        body.Should().Contain("VALIDATION_ERROR");
+    }
+
+    [Fact]
+    public async Task Login_WhenLockedOutAfter5Attempts_Returns423Locked()
+    {
+        // Arrange - register user first
+        var registerRequest = CreateUniqueRegisterRequest("lockout_test");
+        var regResponse = await _client.PostAsJsonAsync("/api/v1/auth/register", registerRequest);
+        regResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var wrongLoginRequest = new LoginRequest(registerRequest.Email, "WrongPassword123!");
+
+        // Act: Fail 4 times (first 4 return 401 Unauthorized)
+        for (var i = 0; i < 4; i++)
+        {
+            var res = await _client.PostAsJsonAsync("/api/v1/auth/login", wrongLoginRequest);
+            res.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        }
+
+        // 5th attempt reaches max failed attempts (5) and triggers 423 Locked
+        var fifthResponse = await _client.PostAsJsonAsync("/api/v1/auth/login", wrongLoginRequest);
+        fifthResponse.StatusCode.Should().Be(HttpStatusCode.Locked);
+        var body5 = await fifthResponse.Content.ReadAsStringAsync();
+        body5.Should().Contain("AUTH_ACCOUNT_LOCKED");
+        body5.Should().Contain("unlockAt");
+        body5.Should().Contain("retryAfterSeconds");
+
+        // Subsequent attempt while locked also returns 423 Locked
+        var sixthResponse = await _client.PostAsJsonAsync("/api/v1/auth/login", wrongLoginRequest);
+        sixthResponse.StatusCode.Should().Be(HttpStatusCode.Locked);
+        var body6 = await sixthResponse.Content.ReadAsStringAsync();
+        body6.Should().Contain("AUTH_ACCOUNT_LOCKED");
+    }
 }

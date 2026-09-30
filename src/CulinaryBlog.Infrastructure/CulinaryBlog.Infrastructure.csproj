@@ -27,4 +27,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Persistence\Sql\20260922_RecipeSearchVector.sql" />
+  </ItemGroup>
 </Project>

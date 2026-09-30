@@ -111,6 +111,11 @@ export interface RegisterRequest {
   password: string;
 }
 
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
 export interface AuthResponse {
   accessToken: string;
   refreshToken: string;
@@ -129,4 +134,10 @@ export interface ApiError {
   statusCode?: number;
   message?: string;
   errors?: Array<{ field: string; message: string }>;
+  extensions?: {
+    code?: string;
+    retryAfterSeconds?: number;
+    unlockAt?: string;
+    [key: string]: unknown;
+  };
 }

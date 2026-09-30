@@ -97,3 +97,15 @@ khi môi trường database local sẵn sàng. InMemory không xác nhận hành
 
 Nếu ổ C thiếu dung lượng, đặt TEMP/TMP, DOTNET_CLI_HOME, NUGET_HTTP_CACHE_PATH
 và NUGET_PACKAGES vào thư mục tmp/ trên ổ D trước khi build.
+
+## Sau khi đồng bộ main (Docker của nhóm)
+
+compose.yml giữ Local storage cho luồng Development hiện có của nhóm.
+Để chạy API, PostgreSQL và MinIO cùng nhau, đặt MINIO_ROOT_USER/MINIO_ROOT_PASSWORD
+như trên rồi chạy:
+
+    docker compose -f compose.yml -f compose.storage.yml -f compose.minio.yml up -d --build
+
+Override compose.minio.yml đổi API sang MinIO và đợi tạo bucket xong.
+Migration RestoreRecipeSearchTrigger bổ sung trigger FTS cho baseline Docker mới;
+giữ GIN index và dữ liệu đã có. Chưa xác minh các dịch vụ thật khi máy thiếu Docker.

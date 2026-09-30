@@ -104,3 +104,18 @@ Danh sách dưới đây gồm file sửa và file mới của đợt bàn giao 
 - `tests/CulinaryBlog.Integration.Tests/MinioLiveTests.cs`
 - `tests/CulinaryBlog.Integration.Tests/SearchAndFileTests.cs`
 - `tests/CulinaryBlog.Integration.Tests/TestFileStorage.cs`
+
+## 9. Giải quyết conflict với main
+
+- Đồng bộ main tại d8dd2bb vào update-minio.
+- Ghép 5 file conflict: Program, RecipesController, RecipeImagesController,
+  ExceptionHandlingMiddleware và ApplicationDbContext.
+- Giữ login/rate limiting/Problem Details và repository/Unit of Work từ main;
+  giữ Search & Pagination, MinIO, avatar và hàng đợi xóa tệp.
+- Bổ sung migration RestoreRecipeSearchTrigger cho baseline Docker mới và test
+  kiểm tra SQL resource được đóng gói.
+- compose.yml giữ Local storage của nhóm; compose.minio.yml bổ sung cấu hình
+  cho API khi chạy chung compose.storage.yml.
+- Kiểm tra sau merge: 95 application tests + 29 integration tests đạt (124 tổng);
+  1 test MinIO thật bỏ qua do môi trường chưa có Docker.
+- Không chạy migration trên database dùng chung; chưa kiểm thử dịch vụ Docker thật.
