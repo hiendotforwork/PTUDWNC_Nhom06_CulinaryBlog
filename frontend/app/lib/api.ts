@@ -19,6 +19,13 @@ import {
 import { getToken } from "./auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5058";
+const API_ORIGIN = API_BASE.replace(/\/$/, "");
+
+// Chuyển URL ảnh tương đối của API thành URL đầy đủ để frontend ở cổng 3000 tải được ảnh.
+function mediaUrl(url?: string): string {
+  if (!url) return "";
+  return url.startsWith("/") ? `${API_ORIGIN}${url}` : url;
+}
 
 type ApiNutrition = { calories?: number; protein?: number; carbohydrates?: number; fat?: number };
 type ApiIngredient = { id: string; name: string; quantity?: number; unit?: string; rowVersion?: string };
@@ -112,7 +119,7 @@ export function mapRecipe(raw: ApiRecipe): Recipe {
     status: status(raw.status),
     images: imageRows.map((image) => ({
       id: image.id,
-      url: image.originalUrl || image.thumbnailUrl || image.mediumUrl || "",
+      url: mediaUrl(image.originalUrl || image.thumbnailUrl || image.mediumUrl),
       isPrimary: image.isPrimary,
       caption: image.altText,
       rowVersion: image.rowVersion,
