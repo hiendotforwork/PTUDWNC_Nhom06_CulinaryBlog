@@ -169,7 +169,9 @@ export function mapRecipe(raw: ApiRecipe): Recipe {
 // Chức năng: lấy chi tiết một công thức theo slug.
 // Input: slug - định danh trên URL. Output: một Recipe đầy đủ.
 export async function getRecipes(mine = false): Promise<Recipe[]> {
-  const res = await fetch(`${API_BASE}/api/v1/recipes?page=1&pageSize=100${mine ? "&mine=true" : ""}`, { headers: authHeaders() });
+  const res = await fetch(`${API_BASE}/api/v1/recipes?page=1&pageSize=100${mine ? "&mine=true" : ""}`, {
+    headers: mine ? authHeaders() : undefined,
+  });
   const page = await handleResponse<RecipePage>(res);
   return page.items.map(mapRecipe);
 }

@@ -102,18 +102,36 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   // Chức năng: tải công thức công khai và công thức của người dùng rồi hợp nhất kết quả.
-  // Input: không có. Output: cập nhật state recipes và categories.
+  // Input: không có. Output: cập nhật state recipes và categories; phiên hết hạn được xóa an toàn.
   const reloadRecipes = async () => {
     try {
       const publicRecipes = await getRecipes(false);
-      const ownRecipes = auth.getToken() ? await getRecipes(true) : [];
-      const merged = [...ownRecipes, ...publicRecipes.filter((x) => !ownRecipes.some((o) => o.id === x.id))];
-      setRecipes(merged);
-      const unique = new Map(merged.map((x) => [x.category.id, x.category]));
-      setCategories([{ id: "all", name: "Tất cả", slug: "all", description: "", icon: "🍽️", recipeCount: merged.length }, ...unique.values()]);
-    } catch { /* API may be offline during static development. */ }
-  };
+      let ownRecipes: Recipe[] = [];
 
+      if (auth.getToken()) {
+        try {
+          ownRecipes = await getRecipes(true);
+        } catch (error: unknown) {
+          const statusCode = typeof error === "object" && error !== null && "statusCode" in error
+            ? (error as { statusCode?: unknown }).statusCode
+            : undefined;
+          if (statusCode === 401) {
+            auth.clearAuth();
+            setCurrentUser(null);
+            showToast("warning", "Phiên đăng nhập đã hết hạn. Danh sách công khai vẫn được tải.");
+          }
+        }
+      }
+
+      const merged = [...ownRecipes, ...publicRecipes.filter((recipe) => !ownRecipes.some((own) => own.id === recipe.id))];
+      setRecipes(merged);
+      const unique = new Map(merged.map((recipe) => [recipe.category.id, recipe.category]));
+      setCategories([{ id: "all", name: "Tất cả", slug: "all", description: "", icon: "🍽️", recipeCount: merged.length }, ...unique.values()]);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Không thể tải danh sách công thức từ backend.";
+      showToast("error", message);
+    }
+  };
   useEffect(() => {
     const timer = window.setTimeout(() => void reloadRecipes(), 0);
     return () => window.clearTimeout(timer);
