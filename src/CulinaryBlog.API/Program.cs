@@ -116,6 +116,7 @@ if (!isTesting && builder.Configuration.GetValue("Database:AutoMigrate", false))
 {
     await using var scope = app.Services.CreateAsyncScope();
     var database = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    await RegisterExistingDockerDatabaseAsync(database);
     await database.Database.MigrateAsync();
     if (builder.Configuration.GetValue("Database:SeedLab2", false))
         await Lab2Seeder.SeedAsync(database);
@@ -135,5 +136,34 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
 app.Run();
+
+// Ghi nhận migration nền mới khi Docker Volume đã có đủ bảng từ migration cũ.
+// Input: ApplicationDbContext kết nối database hiện tại. Output: lịch sử migration được bổ sung mà không xóa dữ liệu.
+static async Task RegisterExistingDockerDatabaseAsync(ApplicationDbContext database)
+{
+    await database.Database.ExecuteSqlRawAsync("""
+        CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" (
+            "MigrationId" character varying(150) NOT NULL,
+            "ProductVersion" character varying(32) NOT NULL,
+            CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY ("MigrationId")
+        );
+
+        DO $EF$
+        BEGIN
+            IF to_regclass('public."AspNetUsers"') IS NOT NULL
+               AND to_regclass('public."AspNetRoles"') IS NOT NULL
+               AND to_regclass('public."RefreshTokens"') IS NOT NULL
+               AND to_regclass('culinary."Categories"') IS NOT NULL
+               AND to_regclass('culinary."Recipes"') IS NOT NULL
+               AND to_regclass('culinary."RecipeIngredients"') IS NOT NULL
+               AND to_regclass('culinary."RecipeSteps"') IS NOT NULL
+               AND to_regclass('culinary."RecipeImages"') IS NOT NULL THEN
+                INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+                VALUES ('20260930100715_InitialDockerDatabase', '10.0.12')
+                ON CONFLICT ("MigrationId") DO NOTHING;
+            END IF;
+        END $EF$;
+        """);
+}
 
 public partial class Program { }
