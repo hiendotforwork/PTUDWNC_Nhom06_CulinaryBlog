@@ -6,8 +6,8 @@ using CulinaryBlog.Infrastructure.Persistence;
 using CulinaryBlog.Infrastructure.Recipes;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
-using CulinaryBlog.Infrastructure.Persistence;
-using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authentication.Google;
+using Microsoft.AspNetCore.Authentication.OAuth;
 using System.Text.Json;
 using System.Text;
 using System.Threading.RateLimiting;
@@ -117,6 +117,23 @@ builder.Services.AddAuthentication(options =>
         ValidateAudience = true,
         ValidAudience = jwtAudience,
         ClockSkew = TimeSpan.Zero
+    };
+})
+.AddCookie(IdentityConstants.ExternalScheme, options =>
+{
+    options.Cookie.Name = ".CulinaryBlog.External";
+    options.ExpireTimeSpan = TimeSpan.FromMinutes(5);
+})
+.AddGoogle(options =>
+{
+    options.SignInScheme = IdentityConstants.ExternalScheme;
+    options.ClientId = builder.Configuration["Authentication:Google:ClientId"] ?? "";
+    options.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"] ?? "";
+    options.CallbackPath = "/api/v1/auth/google-callback";
+    options.SaveTokens = true;
+    options.Events.OnCreatingTicket = context =>
+    {
+        return Task.CompletedTask;
     };
 });
 
