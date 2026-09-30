@@ -267,8 +267,8 @@ app.MapGet("/api/v1/recipes/search", async (
     ISender sender,
     CancellationToken cancellationToken) =>
 {
-    var parsedPage = ParseInteger(page, 1, "page", out var pageError);
-    var parsedPageSize = ParseInteger(pageSize, 12, "pageSize", out var pageSizeError);
+    var parsedPage = ParseIntWithOut(page, 1, "page", out var pageError);
+    var parsedPageSize = ParseIntWithOut(pageSize, 12, "pageSize", out var pageSizeError);
     var errors = SearchRecipesQueryValidator.Validate(q, parsedPage, parsedPageSize);
 
     if (pageError is not null)
@@ -294,6 +294,7 @@ app.MapGet("/api/v1/recipes/search", async (
 })
 .WithName("SearchRecipes");
 
+app.MapControllers();
 app.Run();
 
 static int? ParseInteger(string? value, int defaultValue, string fieldName, Dictionary<string, string[]> errors)
@@ -308,7 +309,7 @@ static int? ParseInteger(string? value, int defaultValue, string fieldName, Dict
         : AddParseError(fieldName, errors);
 }
 
-static int ParseInteger(string? value, int defaultValue, string fieldName, out string? error)
+static int ParseIntWithOut(string? value, int defaultValue, string fieldName, out string? error)
 {
     if (string.IsNullOrWhiteSpace(value))
     {
@@ -343,8 +344,6 @@ static int? AddParseError(string fieldName, Dictionary<string, string[]> errors)
     errors[fieldName] = [$"{fieldName} must be a valid integer."];
     return null;
 }
-app.MapControllers();
-app.Run();
 
 // Partial Program class for WebApplicationFactory in integration tests
 public partial class Program { }
