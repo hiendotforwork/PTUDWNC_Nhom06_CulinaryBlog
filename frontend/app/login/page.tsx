@@ -48,7 +48,9 @@ export default function LoginPage() {
   };
 
   const handleGoogleLogin = () => {
-    showToast("info", "Đăng nhập Google đang được phát triển.");
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5058";
+    const returnUrl = encodeURIComponent("/");
+    window.location.href = `${apiBase}/api/v1/auth/google-signin?returnUrl=${returnUrl}`;
   };
 
   return (
