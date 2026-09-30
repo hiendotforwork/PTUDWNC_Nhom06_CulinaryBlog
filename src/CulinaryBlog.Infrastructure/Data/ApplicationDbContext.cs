@@ -39,7 +39,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
-        // Limit this context to authentication mappings; the assembly also contains recipe mappings.
+        // Apply explicit Identity and Recipe mappings; avoid duplicate legacy context mappings.
         builder.ApplyConfiguration(new ApplicationUserConfiguration());
         builder.ApplyConfiguration(new RefreshTokenConfiguration());
         builder.ApplyConfiguration(new RecipeCategoryConfiguration());

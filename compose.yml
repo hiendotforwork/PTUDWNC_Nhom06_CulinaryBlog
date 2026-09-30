@@ -28,6 +28,7 @@ services:
         condition: service_healthy
     environment:
       ASPNETCORE_ENVIRONMENT: Development
+      FileStorage__Provider: Local
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=culinary_blog;Username=culinary;Password=${POSTGRES_PASSWORD:-culinary_dev_password}
       Database__AutoMigrate: "true"

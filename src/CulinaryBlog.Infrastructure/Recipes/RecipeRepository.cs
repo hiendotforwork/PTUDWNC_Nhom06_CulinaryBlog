@@ -5,14 +5,14 @@ using CulinaryBlog.Application.Recipes.Repositories;
 using CulinaryBlog.Application.Recipes.Validation;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Domain.Enums;
-using CulinaryBlog.Infrastructure.Persistence;
+using CulinaryBlog.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using NpgsqlTypes;
 using System.Text;
 
 namespace CulinaryBlog.Infrastructure.Recipes;
 
-public sealed class RecipeRepository(CulinaryBlogDbContext dbContext) : IRecipeRepository
+public sealed class RecipeRepository(ApplicationDbContext dbContext) : IRecipeRepository
 {
     public async Task<PagedResult<RecipeSummaryDto>> GetPublishedAsync(
         GetRecipesQuery query,
@@ -80,12 +80,12 @@ public sealed class RecipeRepository(CulinaryBlogDbContext dbContext) : IRecipeR
             .Where(recipe => recipe.Status == RecipeStatus.Published);
 
         recipes = recipes.Where(recipe =>
-            EF.Property<NpgsqlTsVector>(recipe, "SearchVector").Matches(tsQuery));
+            EF.Property<NpgsqlTsVector>(recipe, "SearchVector").Matches(EF.Functions.ToTsQuery("simple", tsQuery)));
 
         var totalCount = await recipes.CountAsync(cancellationToken);
         var items = await recipes
             .OrderByDescending(recipe =>
-                EF.Property<NpgsqlTsVector>(recipe, "SearchVector").Rank(tsQuery))
+                EF.Property<NpgsqlTsVector>(recipe, "SearchVector").Rank(EF.Functions.ToTsQuery("simple", tsQuery)))
             .ThenByDescending(recipe => recipe.CreatedAt)
             .ThenBy(recipe => recipe.Id)
             .Skip((query.Page - 1) * query.PageSize)
@@ -102,13 +102,13 @@ public sealed class RecipeRepository(CulinaryBlogDbContext dbContext) : IRecipeR
                 recipe.CategoryId,
                 recipe.Category.Name,
                 recipe.CreatedAt,
-                EF.Property<NpgsqlTsVector>(recipe, "SearchVector").Rank(tsQuery)))
+                EF.Property<NpgsqlTsVector>(recipe, "SearchVector").Rank(EF.Functions.ToTsQuery("simple", tsQuery))))
             .ToListAsync(cancellationToken);
 
         return PagedResult<RecipeSummaryDto>.Create(items, totalCount, query.Page, query.PageSize);
     }
 
-    private static NpgsqlTsQuery BuildPrefixQuery(string query)
+    private static string BuildPrefixQuery(string query)
     {
         var terms = query
             .Normalize(NormalizationForm.FormC)
@@ -117,7 +117,7 @@ public sealed class RecipeRepository(CulinaryBlogDbContext dbContext) : IRecipeR
             .Where(term => term.Length > 0)
             .Select(term => $"{term}:*");
 
-        return NpgsqlTsQuery.Parse(string.Join(" & ", terms));
+        return string.Join(" & ", terms);
     }
 
     private static string RemoveDiacritics(string value)
@@ -127,7 +127,7 @@ public sealed class RecipeRepository(CulinaryBlogDbContext dbContext) : IRecipeR
             System.Globalization.CharUnicodeInfo.GetUnicodeCategory(character)
                 != System.Globalization.UnicodeCategory.NonSpacingMark).ToArray());
 
-        return withoutMarks.Replace('đ', 'd').Replace('Đ', 'D');
+        return withoutMarks.Replace('\u0111', 'd').Replace('\u0110', 'D');
     }
 
     private static IQueryable<Recipe> ApplySorting(

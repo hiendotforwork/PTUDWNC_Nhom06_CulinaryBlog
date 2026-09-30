@@ -17,26 +17,23 @@ using Microsoft.EntityFrameworkCore;
 [Route("api/v1/recipes/{recipeId:guid}/images")]
 // Class điều phối metadata/quyền của FR-RCP-008 và gọi cổng IFileStorageService do FR-FILE hiện thực.
 // Input: repository, Unit of Work, cổng lưu tệp và logger. Output: phản hồi HTTP cho thao tác ảnh.
-public sealed class RecipeImagesController(IRecipeCommandRepository repository, IRecipeUnitOfWork unitOfWork, IFileStorageService storage, ILogger<RecipeImagesController> logger) : ControllerBase
+public sealed class RecipeImagesController(IRecipeCommandRepository repository, IRecipeUnitOfWork unitOfWork, IFileStorageService storage, IFileDeletionQueue deletions, ILogger<RecipeImagesController> logger) : ControllerBase
 {
     private const long MaxFileSize = 5 * 1024 * 1024;
 
     [HttpPost]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(MaxFileSize + 1024 * 32)]
-    // Chức năng: kiểm tra và tải ảnh JPEG/PNG/WebP tối đa 5 MB.
+    // Chức năng: kiểm tra và tải ảnh JPEG/PNG/WebP/AVIF tối đa 5 MB.
     // Input: recipeId, ImageUploadRequest và cancellationToken. Output: thông tin ảnh đã lưu hoặc lỗi.
     public async Task<IActionResult> Upload(Guid recipeId, [FromForm] ImageUploadRequest request, CancellationToken ct)
     {
         var access = await EditableRecipe(recipeId, ct); if (access is not null) return access;
         if (request.File is null || request.File.Length == 0 || request.File.Length > MaxFileSize)
             return UnprocessableEntity(Error("INVALID_IMAGE_SIZE", "Ảnh phải có dung lượng từ 1 byte đến 5 MB."));
-        var format = await DetectFormat(request.File, ct);
-        if (format is null) return UnprocessableEntity(Error("INVALID_IMAGE_TYPE", "Chỉ chấp nhận ảnh JPEG, PNG hoặc WebP hợp lệ."));
-
         StoredFile stored;
         await using (var stream = request.File.OpenReadStream())
-            stored = await storage.UploadAsync(stream, format.Value.ContentType, format.Value.Extension, $"recipes/{recipeId}", ct);
+            stored = await storage.UploadAsync(stream, request.File.ContentType, Path.GetExtension(request.File.FileName), $"recipes/{recipeId}", ct);
         try
         {
             var order = await repository.GetNextImageOrderAsync(recipeId, ct);
@@ -47,7 +44,7 @@ public sealed class RecipeImagesController(IRecipeCommandRepository repository, 
         }
         catch
         {
-            await storage.DeleteAsync(stored.Url, ct);
+            try { deletions.Enqueue(stored.Url); } catch (Exception ex) { logger.LogError(ex, "Failed to queue cleanup for {Url}", stored.Url); }
             throw;
         }
     }
@@ -87,13 +84,13 @@ public sealed class RecipeImagesController(IRecipeCommandRepository repository, 
                 var replacement = (await repository.GetImagesAsync(recipeId, ct)).FirstOrDefault(x => x.Id != imageId);
                 if (replacement is not null) replacement.IsPrimary = true;
             }
+            foreach (var url in new[] { image.OriginalUrl, image.MediumUrl, image.ThumbnailUrl }.Where(x => !string.IsNullOrEmpty(x)).Distinct())
+                deletions.Enqueue(url!);
             image.IsDeleted = true;
             await unitOfWork.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
         }
         catch (DbUpdateConcurrencyException) { return Conflict(Error("IMAGE_CONCURRENCY_CONFLICT", "Ảnh đã được thay đổi bởi người khác.")); }
-        try { await storage.DeleteAsync(image.OriginalUrl, ct); }
-        catch (Exception ex) { logger.LogWarning(ex, "Could not delete stored image {ImageUrl}", image.OriginalUrl); }
         return NoContent();
     }
 
@@ -111,18 +108,8 @@ public sealed class RecipeImagesController(IRecipeCommandRepository repository, 
     {
         try { version = Convert.FromBase64String(text); return version.Length == 16; } catch (FormatException) { version = null; return false; }
     }
-    // Chức năng: đọc chữ ký tệp để nhận dạng JPEG, PNG hoặc WebP.
-    // Input: IFormFile và cancellationToken. Output: content type, extension hoặc null.
-    private static async Task<(string ContentType, string Extension)?> DetectFormat(IFormFile file, CancellationToken ct)
-    {
-        var bytes = new byte[12]; await using var stream = file.OpenReadStream(); var read = await stream.ReadAsync(bytes, ct);
-        if (read >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF) return ("image/jpeg", ".jpg");
-        if (read >= 8 && bytes.AsSpan(0, 8).SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A })) return ("image/png", ".png");
-        if (read >= 12 && bytes.AsSpan(0, 4).SequenceEqual("RIFF"u8) && bytes.AsSpan(8, 4).SequenceEqual("WEBP"u8)) return ("image/webp", ".webp");
-        return null;
-    }
     // Chức năng: tạo response ảnh có RowVersion.
-    // Input: RecipeImage. Output: object phản hồi.
+    // Input: RecipeImage. Output: thông tin ảnh.
     private static object ImageResponse(RecipeImage x) => new { x.Id, x.OriginalUrl, x.MediumUrl, x.ThumbnailUrl, x.AltText, x.IsPrimary, x.OrderIndex, rowVersion = Convert.ToBase64String(x.RowVersion) };
     // Chức năng: tạo payload lỗi ảnh thống nhất.
     // Input: code và message. Output: object lỗi.
