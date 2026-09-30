@@ -16,24 +16,30 @@ function GoogleCallbackContent() {
     hasProcessed.current = true;
 
     const processCallback = () => {
+      // Extract tokens and user info from URL hash fragment (secure) or query params
+      const hash = typeof window !== "undefined" && window.location.hash.startsWith("#")
+        ? window.location.hash.substring(1)
+        : "";
+      const hashParams = new URLSearchParams(hash);
+
       // Check for error from backend
-      const error = searchParams.get("error");
+      const error = hashParams.get("error") || searchParams.get("error");
       if (error) {
         showToast("error", `Đăng nhập Google thất bại: ${error}`);
         router.push("/login");
         return;
       }
 
-      // Extract tokens and user info from URL
-      const accessToken = searchParams.get("accessToken");
-      const refreshToken = searchParams.get("refreshToken");
-      const expiresAt = searchParams.get("expiresAt");
-      const userId = searchParams.get("userId");
-      const displayName = searchParams.get("displayName");
-      const email = searchParams.get("email");
-      const avatarUrl = searchParams.get("avatarUrl");
-      const roles = searchParams.get("roles");
-      const returnUrl = searchParams.get("returnUrl");
+      // Extract tokens and user info from hash or searchParams
+      const accessToken = hashParams.get("accessToken") || searchParams.get("accessToken");
+      const refreshToken = hashParams.get("refreshToken") || searchParams.get("refreshToken");
+      const expiresAt = hashParams.get("expiresAt") || searchParams.get("expiresAt");
+      const userId = hashParams.get("userId") || searchParams.get("userId");
+      const displayName = hashParams.get("displayName") || searchParams.get("displayName");
+      const email = hashParams.get("email") || searchParams.get("email");
+      const avatarUrl = hashParams.get("avatarUrl") || searchParams.get("avatarUrl");
+      const roles = hashParams.get("roles") || searchParams.get("roles");
+      const returnUrl = hashParams.get("returnUrl") || searchParams.get("returnUrl");
 
       if (!accessToken || !refreshToken || !userId) {
         showToast("error", "Đăng nhập Google thất bại: Thiếu thông tin xác thực.");

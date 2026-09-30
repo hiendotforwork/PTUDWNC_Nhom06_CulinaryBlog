@@ -52,7 +52,14 @@ public class GoogleLoginCommandHandler : IRequestHandler<GoogleLoginCommand, Aut
         // 3. If still not found, create new user
         if (existingUser == null)
         {
-            var userName = GenerateUserName(request.Email);
+            var baseUserName = GenerateUserName(request.Email);
+            var userName = baseUserName;
+            var attempts = 0;
+            while (await _userRepository.FindByUserNameAsync(userName, cancellationToken) != null && attempts < 5)
+            {
+                userName = $"{baseUserName}_{Guid.NewGuid().ToString("N")[..4]}";
+                attempts++;
+            }
 
             existingUser = ApplicationUser.Create(request.DisplayName, request.Email, userName);
 

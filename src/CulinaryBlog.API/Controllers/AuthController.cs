@@ -19,15 +19,18 @@ public class AuthController : ControllerBase
     private readonly IMediator _mediator;
     private readonly IValidator<RegisterCommand> _registerValidator;
     private readonly IValidator<LoginCommand> _loginValidator;
+    private readonly IConfiguration _configuration;
 
     public AuthController(
         IMediator mediator,
         IValidator<RegisterCommand> registerValidator,
-        IValidator<LoginCommand> loginValidator)
+        IValidator<LoginCommand> loginValidator,
+        IConfiguration configuration)
     {
         _mediator = mediator;
         _registerValidator = registerValidator;
         _loginValidator = loginValidator;
+        _configuration = configuration;
     }
 
     [HttpPost("register")]
@@ -97,10 +100,12 @@ public class AuthController : ControllerBase
                 authenticateResult = await HttpContext.AuthenticateAsync("Google");
             }
 
+            var frontendBase = _configuration["FrontendUrl"] ?? "http://localhost:3000";
+
             if (!authenticateResult.Succeeded)
             {
                 var error = authenticateResult.Failure?.Message ?? "Google authentication failed";
-                return Redirect($"http://localhost:3000/login?error={Uri.EscapeDataString(error)}");
+                return Redirect($"{frontendBase}/login?error={Uri.EscapeDataString(error)}");
             }
 
             var claims = authenticateResult.Principal?.Claims;
@@ -113,7 +118,7 @@ public class AuthController : ControllerBase
 
             if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(providerKey))
             {
-                return Redirect($"http://localhost:3000/login?error={Uri.EscapeDataString("Không thể lấy thông tin từ Google.")}");
+                return Redirect($"{frontendBase}/login?error={Uri.EscapeDataString("Không thể lấy thông tin từ Google.")}");
             }
 
             var command = new GoogleLoginCommand(
@@ -128,8 +133,8 @@ public class AuthController : ControllerBase
 
             await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
 
-            var redirectUrl = $"http://localhost:3000/auth/google-callback" +
-                $"?accessToken={Uri.EscapeDataString(authResponse.AccessToken)}" +
+            var redirectUrl = $"{frontendBase}/auth/google-callback#" +
+                $"accessToken={Uri.EscapeDataString(authResponse.AccessToken)}" +
                 $"&refreshToken={Uri.EscapeDataString(authResponse.RefreshToken)}" +
                 $"&expiresAt={Uri.EscapeDataString(authResponse.ExpiresAt.ToString("O"))}" +
                 $"&userId={Uri.EscapeDataString(authResponse.User.Id)}" +
@@ -138,11 +143,17 @@ public class AuthController : ControllerBase
                 $"&avatarUrl={Uri.EscapeDataString(authResponse.User.AvatarUrl ?? "")}" +
                 $"&roles={Uri.EscapeDataString(string.Join(",", authResponse.User.Roles))}";
 
+            if (!string.IsNullOrEmpty(returnUrl))
+            {
+                redirectUrl += $"&returnUrl={Uri.EscapeDataString(returnUrl)}";
+            }
+
             return Redirect(redirectUrl);
         }
         catch (Exception)
         {
-            return Redirect($"http://localhost:3000/login?error={Uri.EscapeDataString("Đăng nhập Google thất bại. Vui lòng thử lại.")}");
+            var frontendBase = _configuration["FrontendUrl"] ?? "http://localhost:3000";
+            return Redirect($"{frontendBase}/login?error={Uri.EscapeDataString("Đăng nhập Google thất bại. Vui lòng thử lại.")}");
         }
     }
 }

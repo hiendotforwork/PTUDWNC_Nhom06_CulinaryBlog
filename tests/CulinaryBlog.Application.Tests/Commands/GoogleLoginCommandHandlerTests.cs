@@ -145,4 +145,40 @@ public class GoogleLoginCommandHandlerTests
         ex.Which.ErrorCode.Should().Be("AUTH_ACCOUNT_LOCKED");
         ex.Which.StatusCode.Should().Be(423);
     }
+
+    [Fact]
+    public async Task Handle_WhenNewUserHasDuplicateUserName_GeneratesUniqueUserNameAndSucceeds()
+    {
+        // Arrange
+        var command = CreateValidCommand();
+        _userRepositoryMock.Setup(r => r.FindByLoginAsync(command.Provider, command.ProviderKey, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ApplicationUser?)null);
+        _userRepositoryMock.Setup(r => r.FindByEmailAsync(command.Email, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ApplicationUser?)null);
+
+        // First call for "chef" says username is taken
+        _userRepositoryMock.Setup(r => r.FindByUserNameAsync("chef", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ApplicationUser.Create("Other Chef", "other@example.com", "chef"));
+
+        _userRepositoryMock.Setup(r => r.CreateAsync(It.IsAny<ApplicationUser>()))
+            .ReturnsAsync((true, Enumerable.Empty<string>()));
+        _userRepositoryMock.Setup(r => r.AddToRoleAsync(It.IsAny<ApplicationUser>(), "Author"))
+            .ReturnsAsync((true, Enumerable.Empty<string>()));
+        _userRepositoryMock.Setup(r => r.AddLoginAsync(It.IsAny<ApplicationUser>(), command.Provider, command.ProviderKey, command.DisplayName, command.AvatarUrl))
+            .ReturnsAsync((true, Enumerable.Empty<string>()));
+        _userRepositoryMock.Setup(r => r.GetRolesAsync(It.IsAny<ApplicationUser>()))
+            .ReturnsAsync(new List<string> { "Author" });
+
+        _tokenServiceMock.Setup(t => t.GenerateAccessToken(It.IsAny<ApplicationUser>(), It.IsAny<List<string>>()))
+            .Returns("access-token-123");
+        _tokenServiceMock.Setup(t => t.GenerateRefreshToken())
+            .Returns("refresh-token-123");
+
+        // Act
+        var result = await _handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        result.Should().NotBeNull();
+        _userRepositoryMock.Verify(r => r.CreateAsync(It.Is<ApplicationUser>(u => u.UserName != "chef" && u.UserName.StartsWith("chef"))), Times.Once);
+    }
 }
