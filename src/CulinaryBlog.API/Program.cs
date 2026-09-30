@@ -149,6 +149,20 @@ static async Task RegisterExistingDockerDatabaseAsync(ApplicationDbContext datab
         );
 
         DO $EF$
+        DECLARE identity_table text;
+        BEGIN
+            FOREACH identity_table IN ARRAY ARRAY[
+                'AspNetRoles', 'AspNetUsers', 'AspNetRoleClaims', 'AspNetUserClaims',
+                'AspNetUserLogins', 'AspNetUserRoles', 'AspNetUserTokens', 'RefreshTokens'
+            ] LOOP
+                IF to_regclass(format('culinary.%I', identity_table)) IS NOT NULL
+                   AND to_regclass(format('public.%I', identity_table)) IS NULL THEN
+                    EXECUTE format('ALTER TABLE culinary.%I SET SCHEMA public', identity_table);
+                END IF;
+            END LOOP;
+        END $EF$;
+
+        DO $EF$
         BEGIN
             IF to_regclass('public."AspNetUsers"') IS NOT NULL
                AND to_regclass('public."AspNetRoles"') IS NOT NULL
