@@ -14,7 +14,10 @@ public interface IUserRepository
     Task<ApplicationUser?> FindByEmailAsync(string email, CancellationToken cancellationToken = default);
     Task<ApplicationUser?> FindByUserNameAsync(string userName, CancellationToken cancellationToken = default);
     Task<(bool Succeeded, IEnumerable<string> Errors)> CreateAsync(ApplicationUser user, string password);
+    Task<(bool Succeeded, IEnumerable<string> Errors)> CreateAsync(ApplicationUser user);
     Task<(bool Succeeded, IEnumerable<string> Errors)> AddToRoleAsync(ApplicationUser user, string role);
     Task<IList<string>> GetRolesAsync(ApplicationUser user);
     Task<SignInResult> CheckPasswordSignInAsync(ApplicationUser user, string password, CancellationToken cancellationToken = default);
+    Task<ApplicationUser?> FindByLoginAsync(string provider, string providerKey, CancellationToken cancellationToken = default);
+    Task<(bool Succeeded, IEnumerable<string> Errors)> AddLoginAsync(ApplicationUser user, string provider, string providerKey, string? displayName, string? avatarUrl);
 }
