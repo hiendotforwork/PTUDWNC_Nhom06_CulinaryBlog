@@ -129,8 +129,14 @@ builder.Services.AddAuthentication(options =>
     options.SignInScheme = IdentityConstants.ExternalScheme;
     options.ClientId = builder.Configuration["Authentication:Google:ClientId"] ?? "";
     options.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"] ?? "";
-    options.CallbackPath = "/api/v1/auth/google-callback";
+    options.CallbackPath = "/signin-google";
     options.SaveTokens = true;
+    options.Events.OnRemoteFailure = context =>
+    {
+        context.Response.Redirect("http://localhost:3000/login?error=" + Uri.EscapeDataString(context.Failure?.Message ?? "Google authentication failed"));
+        context.HandleResponse();
+        return Task.CompletedTask;
+    };
     options.Events.OnCreatingTicket = context =>
     {
         return Task.CompletedTask;
