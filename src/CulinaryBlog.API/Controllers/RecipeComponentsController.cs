@@ -5,9 +5,9 @@
 namespace CulinaryBlog.API.Controllers;
 
 using System.Security.Claims;
+using CulinaryBlog.Application.Recipes.Repositories;
 using CulinaryBlog.Domain.Constants;
 using CulinaryBlog.Domain.Entities;
-using CulinaryBlog.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -16,8 +16,8 @@ using Microsoft.EntityFrameworkCore;
 [Authorize(Roles = AppRoles.Author + "," + AppRoles.Admin)]
 [Route("api/v1/recipes/{recipeId:guid}")]
 // Class điều phối FR-RCP-009 và FR-RCP-010.
-// Input: ApplicationDbContext. Output: phản hồi HTTP cho thao tác thành phần công thức.
-public sealed class RecipeComponentsController(ApplicationDbContext db) : ControllerBase
+// Input: repository và Unit of Work dành cho FR-RCP. Output: phản hồi HTTP cho thao tác thành phần công thức.
+public sealed class RecipeComponentsController(IRecipeCommandRepository repository, IRecipeUnitOfWork unitOfWork) : ControllerBase
 {
     [HttpPost("ingredients")]
     // Chức năng: thêm nguyên liệu vào cuối danh sách.
@@ -28,9 +28,9 @@ public sealed class RecipeComponentsController(ApplicationDbContext db) : Contro
         if (recipe.Result is not null) return recipe.Result;
         var error = ValidateIngredient(request.Name, request.Quantity, request.Unit);
         if (error is not null) return UnprocessableEntity(error);
-        var order = await db.RecipeIngredients.Where(x => x.RecipeId == recipeId).Select(x => (int?)x.OrderIndex).MaxAsync(ct) ?? -1;
-        var item = new RecipeIngredient { RecipeId = recipeId, Name = request.Name.Trim(), Quantity = request.Quantity, Unit = request.Unit?.Trim(), Notes = request.Notes?.Trim(), OrderIndex = order + 1 };
-        db.RecipeIngredients.Add(item); await db.SaveChangesAsync(ct);
+        var order = await repository.GetNextIngredientOrderAsync(recipeId, ct);
+        var item = new RecipeIngredient { RecipeId = recipeId, Name = request.Name.Trim(), Quantity = request.Quantity, Unit = request.Unit?.Trim(), Notes = request.Notes?.Trim(), OrderIndex = order };
+        repository.AddIngredient(item); await unitOfWork.SaveChangesAsync(ct);
         return StatusCode(201, IngredientResponse(item));
     }
 
@@ -40,10 +40,10 @@ public sealed class RecipeComponentsController(ApplicationDbContext db) : Contro
     public async Task<IActionResult> UpdateIngredient(Guid recipeId, Guid id, IngredientUpdateRequest request, CancellationToken ct)
     {
         var recipe = await EditableRecipe(recipeId, ct); if (recipe.Result is not null) return recipe.Result;
-        var item = await db.RecipeIngredients.SingleOrDefaultAsync(x => x.Id == id && x.RecipeId == recipeId, ct); if (item is null) return NotFound();
+        var item = await repository.GetIngredientAsync(recipeId, id, ct); if (item is null) return NotFound();
         var error = ValidateIngredient(request.Name, request.Quantity, request.Unit); if (error is not null) return UnprocessableEntity(error);
         if (!TryVersion(request.RowVersion, out var version, out var versionError)) return versionError!;
-        db.Entry(item).Property(x => x.RowVersion).OriginalValue = version!;
+        repository.SetOriginalVersion(item, version!);
         item.Name = request.Name.Trim(); item.Quantity = request.Quantity; item.Unit = request.Unit?.Trim(); item.Notes = request.Notes?.Trim(); item.OrderIndex = request.OrderIndex;
         if (item.OrderIndex < 0) return UnprocessableEntity(Validation("orderIndex", "Thứ tự không được âm."));
         return await SaveComponent(item.Id, () => IngredientResponse(item), ct);
@@ -55,9 +55,9 @@ public sealed class RecipeComponentsController(ApplicationDbContext db) : Contro
     public async Task<IActionResult> DeleteIngredient(Guid recipeId, Guid id, VersionRequest request, CancellationToken ct)
     {
         var recipe = await EditableRecipe(recipeId, ct); if (recipe.Result is not null) return recipe.Result;
-        var item = await db.RecipeIngredients.SingleOrDefaultAsync(x => x.Id == id && x.RecipeId == recipeId, ct); if (item is null) return NotFound();
+        var item = await repository.GetIngredientAsync(recipeId, id, ct); if (item is null) return NotFound();
         if (!TryVersion(request.RowVersion, out var version, out var versionError)) return versionError!;
-        db.Entry(item).Property(x => x.RowVersion).OriginalValue = version!; item.IsDeleted = true;
+        repository.SetOriginalVersion(item, version!); item.IsDeleted = true;
         return await SaveComponent(item.Id, () => null, ct, noContent: true);
     }
 
@@ -70,9 +70,9 @@ public sealed class RecipeComponentsController(ApplicationDbContext db) : Contro
         if (string.IsNullOrWhiteSpace(request.Description) || request.Description.Trim().Length > 2000)
             return UnprocessableEntity(Validation("description", "Nội dung bước phải có từ 1 đến 2000 ký tự."));
         if (request.TimerMinutes < 0) return UnprocessableEntity(Validation("timerMinutes", "Thời gian không được âm."));
-        var number = (await db.RecipeSteps.Where(x => x.RecipeId == recipeId).Select(x => (int?)x.StepNumber).MaxAsync(ct) ?? 0) + 1;
+        var number = await repository.GetNextStepNumberAsync(recipeId, ct);
         var item = new RecipeStep { RecipeId = recipeId, StepNumber = number, Title = string.IsNullOrWhiteSpace(request.Title) ? $"Bước {number}" : request.Title.Trim(), Description = request.Description.Trim(), TimerMinutes = request.TimerMinutes, ImageUrl = request.ImageUrl?.Trim() };
-        db.RecipeSteps.Add(item); await db.SaveChangesAsync(ct);
+        repository.AddStep(item); await unitOfWork.SaveChangesAsync(ct);
         return StatusCode(201, StepResponse(item));
     }
 
@@ -82,11 +82,11 @@ public sealed class RecipeComponentsController(ApplicationDbContext db) : Contro
     public async Task<IActionResult> UpdateStep(Guid recipeId, Guid id, StepUpdateRequest request, CancellationToken ct)
     {
         var recipe = await EditableRecipe(recipeId, ct); if (recipe.Result is not null) return recipe.Result;
-        var item = await db.RecipeSteps.SingleOrDefaultAsync(x => x.Id == id && x.RecipeId == recipeId, ct); if (item is null) return NotFound();
+        var item = await repository.GetStepAsync(recipeId, id, ct); if (item is null) return NotFound();
         if (string.IsNullOrWhiteSpace(request.Description) || request.Description.Trim().Length > 2000) return UnprocessableEntity(Validation("description", "Nội dung bước phải có từ 1 đến 2000 ký tự."));
         if (request.TimerMinutes < 0) return UnprocessableEntity(Validation("timerMinutes", "Thời gian không được âm."));
         if (!TryVersion(request.RowVersion, out var version, out var versionError)) return versionError!;
-        db.Entry(item).Property(x => x.RowVersion).OriginalValue = version!;
+        repository.SetOriginalVersion(item, version!);
         item.Title = string.IsNullOrWhiteSpace(request.Title) ? $"Bước {item.StepNumber}" : request.Title.Trim(); item.Description = request.Description.Trim(); item.TimerMinutes = request.TimerMinutes; item.ImageUrl = request.ImageUrl?.Trim();
         return await SaveComponent(item.Id, () => StepResponse(item), ct);
     }
@@ -97,9 +97,9 @@ public sealed class RecipeComponentsController(ApplicationDbContext db) : Contro
     public async Task<IActionResult> DeleteStep(Guid recipeId, Guid id, VersionRequest request, CancellationToken ct)
     {
         var recipe = await EditableRecipe(recipeId, ct); if (recipe.Result is not null) return recipe.Result;
-        var item = await db.RecipeSteps.SingleOrDefaultAsync(x => x.Id == id && x.RecipeId == recipeId, ct); if (item is null) return NotFound();
+        var item = await repository.GetStepAsync(recipeId, id, ct); if (item is null) return NotFound();
         if (!TryVersion(request.RowVersion, out var version, out var versionError)) return versionError!;
-        db.Entry(item).Property(x => x.RowVersion).OriginalValue = version!; item.IsDeleted = true;
+        repository.SetOriginalVersion(item, version!); item.IsDeleted = true;
         return await SaveComponent(item.Id, () => null, ct, noContent: true);
     }
 
@@ -107,7 +107,7 @@ public sealed class RecipeComponentsController(ApplicationDbContext db) : Contro
     // Input: id và cancellationToken. Output: công thức hoặc IActionResult lỗi.
     private async Task<(Recipe? Value, IActionResult? Result)> EditableRecipe(Guid id, CancellationToken ct)
     {
-        var recipe = await db.Recipes.SingleOrDefaultAsync(x => x.Id == id, ct); if (recipe is null) return (null, NotFound());
+        var recipe = await repository.GetRecipeAsync(id, cancellationToken: ct); if (recipe is null) return (null, NotFound());
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
         return recipe.AuthorId == userId || User.IsInRole(AppRoles.Admin) ? (recipe, null) : (null, Forbid());
     }
@@ -130,7 +130,7 @@ public sealed class RecipeComponentsController(ApplicationDbContext db) : Contro
     // Input: id, hàm tạo response, cancellationToken và noContent. Output: response thành công hoặc 409.
     private async Task<IActionResult> SaveComponent(Guid id, Func<object?> response, CancellationToken ct, bool noContent = false)
     {
-        try { await db.SaveChangesAsync(ct); return noContent ? NoContent() : Ok(response()); }
+        try { await unitOfWork.SaveChangesAsync(ct); return noContent ? NoContent() : Ok(response()); }
         catch (DbUpdateConcurrencyException) { return Conflict(new { errorCode = "CONCURRENCY_CONFLICT", message = "Dữ liệu đã được thay đổi bởi người khác.", id }); }
     }
     // Chức năng: tạo payload lỗi validation theo trường.

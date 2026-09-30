@@ -19,6 +19,13 @@ import {
 import { getToken } from "./auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5058";
+const API_ORIGIN = API_BASE.replace(/\/$/, "");
+
+// Chuyển URL ảnh tương đối của API thành URL đầy đủ để frontend ở cổng 3000 tải được ảnh.
+function mediaUrl(url?: string): string {
+  if (!url) return "";
+  return url.startsWith("/") ? `${API_ORIGIN}${url}` : url;
+}
 
 type ApiNutrition = { calories?: number; protein?: number; carbohydrates?: number; fat?: number };
 type ApiIngredient = { id: string; name: string; quantity?: number; unit?: string; rowVersion?: string };
@@ -112,7 +119,7 @@ export function mapRecipe(raw: ApiRecipe): Recipe {
     status: status(raw.status),
     images: imageRows.map((image) => ({
       id: image.id,
-      url: image.originalUrl || image.thumbnailUrl || image.mediumUrl || "",
+      url: mediaUrl(image.originalUrl || image.thumbnailUrl || image.mediumUrl),
       isPrimary: image.isPrimary,
       caption: image.altText,
       rowVersion: image.rowVersion,
@@ -169,7 +176,9 @@ export function mapRecipe(raw: ApiRecipe): Recipe {
 // Chức năng: lấy chi tiết một công thức theo slug.
 // Input: slug - định danh trên URL. Output: một Recipe đầy đủ.
 export async function getRecipes(mine = false): Promise<Recipe[]> {
-  const res = await fetch(`${API_BASE}/api/v1/recipes?page=1&pageSize=100${mine ? "&mine=true" : ""}`, { headers: authHeaders() });
+  const res = await fetch(`${API_BASE}/api/v1/recipes?page=1&pageSize=100${mine ? "&mine=true" : ""}`, {
+    headers: mine ? authHeaders() : undefined,
+  });
   const page = await handleResponse<RecipePage>(res);
   return page.items.map(mapRecipe);
 }
