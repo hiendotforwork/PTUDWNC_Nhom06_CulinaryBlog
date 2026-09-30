@@ -8,6 +8,7 @@ using System.Security.Claims;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using CulinaryBlog.Application.Recipes.Repositories;
 using CulinaryBlog.Domain.Constants;
 using Microsoft.AspNetCore.Authorization;
 using CulinaryBlog.Domain.Entities;
@@ -19,8 +20,12 @@ using Microsoft.EntityFrameworkCore;
 [ApiController]
 [Route("api/v1/recipes")]
 // Class điều phối các endpoint FR-RCP-001 đến FR-RCP-007.
-// Input: ApplicationDbContext. Output: phản hồi HTTP chứa dữ liệu hoặc lỗi nghiệp vụ.
-public sealed class RecipesController(ApplicationDbContext db) : ControllerBase
+// Input: DbContext cho truy vấn đọc, repository và Unit of Work cho các thao tác ghi.
+// Output: phản hồi HTTP chứa dữ liệu hoặc lỗi nghiệp vụ.
+public sealed class RecipesController(
+    ApplicationDbContext db,
+    IRecipeCommandRepository repository,
+    IRecipeUnitOfWork unitOfWork) : ControllerBase
 {
     [HttpGet]
     // Chức năng: lấy danh sách công thức có phân trang, lọc và sắp xếp.
@@ -125,7 +130,7 @@ public sealed class RecipesController(ApplicationDbContext db) : ControllerBase
         var slugBase = Slugify(request.Title);
         var slug = slugBase;
         var suffix = 2;
-        while (await db.Recipes.IgnoreQueryFilters().AnyAsync(x => x.Slug == slug, cancellationToken))
+        while (await repository.SlugExistsAsync(slug, cancellationToken))
             slug = $"{slugBase}-{suffix++}";
 
         var recipe = new Recipe
@@ -136,8 +141,8 @@ public sealed class RecipesController(ApplicationDbContext db) : ControllerBase
             CategoryId = request.CategoryId, AuthorId = CurrentUserId()!, Status = RecipeStatus.Draft,
             Nutrition = request.Nutrition ?? new RecipeNutrition()
         };
-        db.Recipes.Add(recipe);
-        await db.SaveChangesAsync(cancellationToken);
+        repository.AddRecipe(recipe);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         return CreatedAtAction(nameof(GetBySlug), new { slug = recipe.Slug },
             new RecipeMutationResponse(recipe.Id, recipe.Slug, recipe.Status, Convert.ToBase64String(recipe.RowVersion)));
     }
@@ -154,24 +159,24 @@ public sealed class RecipesController(ApplicationDbContext db) : ControllerBase
         if (expectedVersion.Length != 16)
             return UnprocessableEntity(new { errorCode = "INVALID_ROW_VERSION", message = "RowVersion không đúng định dạng." });
 
-        var recipe = await db.Recipes.SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
+        var recipe = await repository.GetRecipeAsync(id, cancellationToken: cancellationToken);
         if (recipe is null) return NotFound();
         if (recipe.AuthorId != CurrentUserId() && !User.IsInRole(AppRoles.Admin)) return Forbid();
 
         var validation = await ValidateRequest(request.Title, request.Description, request.PrepTime, request.CookTime, request.Servings, request.Difficulty, request.CategoryId, cancellationToken);
         if (validation is not null) return UnprocessableEntity(validation);
 
-        db.Entry(recipe).Property(x => x.RowVersion).OriginalValue = expectedVersion;
+        repository.SetOriginalVersion(recipe, expectedVersion);
         recipe.Title = request.Title.Trim();
         recipe.Description = request.Description.Trim();
         recipe.Instructions = request.Instructions?.Trim() ?? "";
         recipe.PrepTime = request.PrepTime; recipe.CookTime = request.CookTime;
         recipe.Servings = request.Servings; recipe.Difficulty = request.Difficulty;
         recipe.CategoryId = request.CategoryId; recipe.Nutrition = request.Nutrition ?? new RecipeNutrition();
-        try { await db.SaveChangesAsync(cancellationToken); }
+        try { await unitOfWork.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateConcurrencyException)
         {
-            var latest = await db.Recipes.AsNoTracking().Where(x => x.Id == id).Select(x => x.RowVersion).SingleOrDefaultAsync(cancellationToken);
+            var latest = await repository.GetRecipeVersionAsync(id, cancellationToken);
             return Conflict(new { errorCode = "RECIPE_CONCURRENCY_CONFLICT", message = "Công thức đã được thay đổi bởi người khác.", rowVersion = latest is null ? null : Convert.ToBase64String(latest) });
         }
         return Ok(new RecipeMutationResponse(recipe.Id, recipe.Slug, recipe.Status, Convert.ToBase64String(recipe.RowVersion)));
@@ -187,7 +192,7 @@ public sealed class RecipesController(ApplicationDbContext db) : ControllerBase
         var recipe = access.Value!;
         if (recipe.Status == RecipeStatus.Archived)
             return UnprocessableEntity(BusinessError("ARCHIVED_RECIPE", "Phải khôi phục công thức trước khi xuất bản."));
-        if (!await db.RecipeIngredients.AnyAsync(x => x.RecipeId == id, ct) || !await db.RecipeSteps.AnyAsync(x => x.RecipeId == id, ct))
+        if (!await repository.HasIngredientsAsync(id, ct) || !await repository.HasStepsAsync(id, ct))
             return UnprocessableEntity(BusinessError("RECIPE_NOT_READY", "Công thức cần ít nhất một nguyên liệu và một bước thực hiện."));
         return await ChangeStatus(recipe, request.RowVersion, RecipeStatus.Published, DateTimeOffset.UtcNow, ct);
     }
@@ -234,17 +239,16 @@ public sealed class RecipesController(ApplicationDbContext db) : ControllerBase
     // Input: id, VersionRequest và cancellationToken. Output: 204 hoặc lỗi quyền/đồng thời.
     public async Task<IActionResult> Delete(Guid id, VersionRequest request, CancellationToken ct)
     {
-        var recipe = await db.Recipes.IgnoreQueryFilters().Include(x => x.Ingredients).Include(x => x.Steps).Include(x => x.Images)
-            .SingleOrDefaultAsync(x => x.Id == id && !x.IsDeleted, ct);
+        var recipe = await repository.GetRecipeAsync(id, includeChildren: true, ignoreQueryFilters: true, cancellationToken: ct);
         if (recipe is null) return NotFound();
         if (recipe.AuthorId != CurrentUserId() && !User.IsInRole(AppRoles.Admin)) return Forbid();
         if (!TryRowVersion(request.RowVersion, out var version, out var error)) return error!;
-        db.Entry(recipe).Property(x => x.RowVersion).OriginalValue = version!;
+        repository.SetOriginalVersion(recipe, version!);
         recipe.IsDeleted = true;
         foreach (var item in recipe.Ingredients) item.IsDeleted = true;
         foreach (var item in recipe.Steps) item.IsDeleted = true;
         foreach (var item in recipe.Images) item.IsDeleted = true;
-        try { await db.SaveChangesAsync(ct); return NoContent(); }
+        try { await unitOfWork.SaveChangesAsync(ct); return NoContent(); }
         catch (DbUpdateConcurrencyException) { return Conflict(ConcurrencyError()); }
     }
 
@@ -252,7 +256,7 @@ public sealed class RecipesController(ApplicationDbContext db) : ControllerBase
     // Input: id và cancellationToken. Output: công thức hoặc IActionResult lỗi.
     private async Task<(Recipe? Value, IActionResult? Result)> EditableRecipe(Guid id, CancellationToken ct)
     {
-        var recipe = await db.Recipes.SingleOrDefaultAsync(x => x.Id == id, ct);
+        var recipe = await repository.GetRecipeAsync(id, cancellationToken: ct);
         if (recipe is null) return (null, NotFound());
         return recipe.AuthorId == CurrentUserId() || User.IsInRole(AppRoles.Admin) ? (recipe, null) : (null, Forbid());
     }
@@ -262,11 +266,11 @@ public sealed class RecipesController(ApplicationDbContext db) : ControllerBase
     private async Task<IActionResult> ChangeStatus(Recipe recipe, string rowVersion, RecipeStatus status, DateTimeOffset? publishedAt, CancellationToken ct)
     {
         if (!TryRowVersion(rowVersion, out var version, out var error)) return error!;
-        db.Entry(recipe).Property(x => x.RowVersion).OriginalValue = version!;
+        repository.SetOriginalVersion(recipe, version!);
         recipe.Status = status; recipe.PublishedAt = publishedAt;
         try
         {
-            await db.SaveChangesAsync(ct);
+            await unitOfWork.SaveChangesAsync(ct);
             return Ok(new RecipeMutationResponse(recipe.Id, recipe.Slug, recipe.Status, Convert.ToBase64String(recipe.RowVersion)));
         }
         catch (DbUpdateConcurrencyException) { return Conflict(ConcurrencyError()); }
@@ -300,7 +304,7 @@ public sealed class RecipesController(ApplicationDbContext db) : ControllerBase
         if (cookTime < 0) errors["cookTime"] = ["Thời gian nấu không được âm."];
         if (servings <= 0) errors["servings"] = ["Khẩu phần phải lớn hơn 0."];
         if (!Enum.IsDefined(difficulty)) errors["difficulty"] = ["Độ khó không hợp lệ."];
-        if (!await db.Categories.AnyAsync(x => x.Id == categoryId, cancellationToken)) errors["categoryId"] = ["Danh mục không tồn tại."];
+        if (!await repository.CategoryExistsAsync(categoryId, cancellationToken)) errors["categoryId"] = ["Danh mục không tồn tại."];
         return errors.Count == 0 ? null : new { errorCode = "VALIDATION_ERROR", message = "Dữ liệu không hợp lệ.", errors };
     }
 
