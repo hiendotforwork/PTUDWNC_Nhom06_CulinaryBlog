@@ -38,6 +38,35 @@ public class UserRepository : IUserRepository
         return (result.Succeeded, result.Errors.Select(e => e.Description));
     }
 
+    public async Task<(bool Succeeded, IEnumerable<string> Errors)> CreateAsync(ApplicationUser user)
+    {
+        var result = await _userManager.CreateAsync(user);
+        return (result.Succeeded, result.Errors.Select(e => e.Description));
+    }
+
+    public async Task<ApplicationUser?> FindByLoginAsync(string provider, string providerKey, CancellationToken cancellationToken = default)
+    {
+        return await _userManager.FindByLoginAsync(provider, providerKey);
+    }
+
+    public async Task<(bool Succeeded, IEnumerable<string> Errors)> AddLoginAsync(
+        ApplicationUser user,
+        string provider,
+        string providerKey,
+        string? displayName,
+        string? avatarUrl)
+    {
+        if (!string.IsNullOrEmpty(avatarUrl) && string.IsNullOrEmpty(user.AvatarUrl))
+        {
+            user.AvatarUrl = avatarUrl;
+            await _userManager.UpdateAsync(user);
+        }
+
+        var loginInfo = new UserLoginInfo(provider, providerKey, displayName ?? provider);
+        var result = await _userManager.AddLoginAsync(user, loginInfo);
+        return (result.Succeeded, result.Errors.Select(e => e.Description));
+    }
+
     public async Task<(bool Succeeded, IEnumerable<string> Errors)> AddToRoleAsync(ApplicationUser user, string role)
     {
         if (_roleManager != null && !await _roleManager.RoleExistsAsync(role))

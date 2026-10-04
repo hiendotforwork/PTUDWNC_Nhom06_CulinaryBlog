@@ -5,7 +5,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { Recipe, User, ToastMessage, ToastType, Category, AuthResponse } from "../lib/types";
+import { Recipe, User, ToastMessage, ToastType, Category, AuthResponse, AuthUser } from "../lib/types";
 import { MOCK_CATEGORIES, MOCK_USERS } from "../lib/mockData";
 import {
   register as apiRegister,
@@ -41,6 +41,12 @@ interface AppContextType {
   publishRecipe: (id: string) => Promise<void>;
   archiveRecipe: (id: string) => Promise<void>;
   login: (email: string, password?: string) => Promise<boolean>;
+  loginWithExternalToken: (
+    accessToken: string,
+    refreshToken: string,
+    expiresAt: string,
+    user: AuthUser
+  ) => void;
   register: (data: { displayName: string; email: string; userName: string; password?: string }) => Promise<boolean>;
   logout: () => void;
   updateProfile: (data: { displayName?: string; bio?: string; avatarUrl?: string }) => void;
@@ -128,7 +134,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const unique = new Map(merged.map((recipe) => [recipe.category.id, recipe.category]));
       setCategories([{ id: "all", name: "Tất cả", slug: "all", description: "", icon: "🍽️", recipeCount: merged.length }, ...unique.values()]);
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Không thể tải danh sách công thức từ backend.";
+      const message = error instanceof Error
+        ? error.message
+        : (typeof error === "object" && error !== null && "message" in error && typeof (error as { message: unknown }).message === "string")
+          ? (error as { message: string }).message
+          : "Không thể tải danh sách công thức từ backend.";
       showToast("error", message);
     }
   };
@@ -482,6 +492,31 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     showToast("info", "Đã đăng xuất");
   };
 
+  const loginWithExternalToken = (
+    accessToken: string,
+    refreshToken: string,
+    expiresAt: string,
+    authUser: AuthUser
+  ) => {
+    auth.setToken(accessToken);
+    auth.setRefreshToken(refreshToken);
+    auth.setStoredUser(authUser);
+
+    const user: User = {
+      id: authUser.id,
+      displayName: authUser.displayName,
+      userName: authUser.userName,
+      email: authUser.email,
+      avatarUrl: authUser.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
+      bio: authUser.bio,
+      role: (authUser.roles?.includes("Author") ? "User" : (authUser.roles?.[0] as "User" | "Admin")) || "User",
+      createdAt: new Date().toISOString(),
+    };
+
+    setCurrentUser(user);
+    void reloadRecipes();
+  };
+
   const updateProfile = (data: { displayName?: string; bio?: string; avatarUrl?: string }) => {
     if (!currentUser) return;
     const updated: User = {
@@ -509,6 +544,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         publishRecipe,
         archiveRecipe,
         login,
+        loginWithExternalToken,
         register,
         logout,
         updateProfile,

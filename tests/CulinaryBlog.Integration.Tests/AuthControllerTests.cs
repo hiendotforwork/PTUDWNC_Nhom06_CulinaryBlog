@@ -10,11 +10,13 @@ using Xunit;
 
 public class AuthControllerTests : IClassFixture<CustomWebApplicationFactory>
 {
+    private readonly CustomWebApplicationFactory _factory;
     private readonly HttpClient _client;
     private readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
 
     public AuthControllerTests(CustomWebApplicationFactory factory)
     {
+        _factory = factory;
         _client = factory.CreateClient();
     }
 
@@ -250,5 +252,41 @@ public class AuthControllerTests : IClassFixture<CustomWebApplicationFactory>
         sixthResponse.StatusCode.Should().Be(HttpStatusCode.Locked);
         var body6 = await sixthResponse.Content.ReadAsStringAsync();
         body6.Should().Contain("AUTH_ACCOUNT_LOCKED");
+    }
+
+    [Fact]
+    public async Task GoogleSignIn_ReturnsChallengeOrRedirect()
+    {
+        // Arrange
+        using var client = _factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        // Act
+        var response = await client.GetAsync("/api/v1/auth/google-signin");
+
+        // Assert - should return 302 redirect to Google OAuth
+        response.StatusCode.Should().BeOneOf(HttpStatusCode.Redirect, HttpStatusCode.Found);
+        response.Headers.Location.Should().NotBeNull();
+        response.Headers.Location!.ToString().Should().Contain("accounts.google.com");
+    }
+
+    [Fact]
+    public async Task GoogleCallback_WithoutAuthentication_RedirectsToLoginWithError()
+    {
+        // Arrange
+        using var client = _factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        // Act
+        var response = await client.GetAsync("/api/v1/auth/google-callback");
+
+        // Assert
+        response.StatusCode.Should().BeOneOf(HttpStatusCode.Redirect, HttpStatusCode.Found);
+        response.Headers.Location.Should().NotBeNull();
+        response.Headers.Location!.ToString().Should().Contain("/login");
     }
 }

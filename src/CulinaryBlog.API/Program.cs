@@ -2,6 +2,9 @@
 // Khi chạy bằng Docker, ứng dụng tự áp dụng migration, seed Lab 2 và phục vụ ảnh từ Docker Volume.
 
 using MediatR;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authentication.Google;
+using Microsoft.AspNetCore.Authentication.OAuth;
 using System.Text.Json;
 using CulinaryBlog.Application.Recipes.Validation;
 using System.Text;
@@ -22,7 +25,6 @@ using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
 using AuthApplicationUser = CulinaryBlog.Domain.Entities.ApplicationUser;
@@ -108,6 +110,29 @@ builder.Services.AddAuthentication(options =>
         ValidAudience = jwtAudience,
         ClockSkew = TimeSpan.Zero
     };
+})
+.AddCookie(IdentityConstants.ExternalScheme, options =>
+{
+    options.Cookie.Name = ".CulinaryBlog.External";
+    options.ExpireTimeSpan = TimeSpan.FromMinutes(5);
+})
+.AddGoogle(options =>
+{
+    options.SignInScheme = IdentityConstants.ExternalScheme;
+    options.ClientId = builder.Configuration["Authentication:Google:ClientId"] ?? "";
+    options.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"] ?? "";
+    options.CallbackPath = "/signin-google";
+    options.SaveTokens = true;
+    options.Events.OnRemoteFailure = context =>
+    {
+        context.Response.Redirect("http://localhost:3000/login?error=" + Uri.EscapeDataString(context.Failure?.Message ?? "Google authentication failed"));
+        context.HandleResponse();
+        return Task.CompletedTask;
+    };
+    options.Events.OnCreatingTicket = context =>
+    {
+        return Task.CompletedTask;
+    };
 });
 
 builder.Services.AddAuthorization();
@@ -166,8 +191,8 @@ app.MapGet("/api/v1/recipes/search", async (
     ISender sender,
     CancellationToken cancellationToken) =>
 {
-    var parsedPage = ParseInteger(page, 1, "page", out var pageError);
-    var parsedPageSize = ParseInteger(pageSize, 12, "pageSize", out var pageSizeError);
+    var parsedPage = ParseIntWithOut(page, 1, "page", out var pageError);
+    var parsedPageSize = ParseIntWithOut(pageSize, 12, "pageSize", out var pageSizeError);
     var errors = SearchRecipesQueryValidator.Validate(q, parsedPage, parsedPageSize);
 
     if (pageError is not null)
@@ -240,7 +265,7 @@ static async Task RegisterExistingDockerDatabaseAsync(ApplicationDbContext datab
         """);
 }
 
-static int ParseInteger(string? value, int defaultValue, string fieldName, out string? error)
+static int ParseIntWithOut(string? value, int defaultValue, string fieldName, out string? error)
 {
     if (string.IsNullOrWhiteSpace(value))
     {
@@ -259,3 +284,4 @@ static int ParseInteger(string? value, int defaultValue, string fieldName, out s
 }
 
 public partial class Program { }
+

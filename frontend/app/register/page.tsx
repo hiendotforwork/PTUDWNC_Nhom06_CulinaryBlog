@@ -84,7 +84,9 @@ export default function RegisterPage() {
   };
 
   const handleGoogleSignup = () => {
-    showToast("info", "Đăng ký Google đang được phát triển.");
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5058";
+    const returnUrl = encodeURIComponent("/");
+    window.location.href = `${apiBase}/api/v1/auth/google-signin?returnUrl=${returnUrl}`;
   };
 
   return (
