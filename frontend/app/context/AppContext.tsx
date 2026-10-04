@@ -134,7 +134,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const unique = new Map(merged.map((recipe) => [recipe.category.id, recipe.category]));
       setCategories([{ id: "all", name: "Tất cả", slug: "all", description: "", icon: "🍽️", recipeCount: merged.length }, ...unique.values()]);
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Không thể tải danh sách công thức từ backend.";
+      const message = error instanceof Error
+        ? error.message
+        : (typeof error === "object" && error !== null && "message" in error && typeof (error as { message: unknown }).message === "string")
+          ? (error as { message: string }).message
+          : "Không thể tải danh sách công thức từ backend.";
       showToast("error", message);
     }
   };
