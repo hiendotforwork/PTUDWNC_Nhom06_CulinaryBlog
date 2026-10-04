@@ -79,7 +79,7 @@ public sealed class RecipeConfiguration : IEntityTypeConfiguration<Recipe>
             t.HasCheckConstraint("CK_Recipes_Slug", "length(btrim(\"Slug\")) > 0");
             t.HasCheckConstraint("CK_Recipes_Description", "length(btrim(\"Description\")) BETWEEN 1 AND 2000");
             t.HasCheckConstraint("CK_Recipes_Times", "\"PrepTime\" > 0 AND \"CookTime\" >= 0 AND \"Servings\" > 0");
-            t.HasCheckConstraint("CK_Recipes_Enums", "\"Status\" BETWEEN 0 AND 2 AND \"Difficulty\" BETWEEN 1 AND 4");
+            t.HasCheckConstraint("CK_Recipes_Enums", "\"Status\" BETWEEN 0 AND 2 AND \"Difficulty\" BETWEEN 1 AND 3");
             t.HasCheckConstraint("CK_Recipes_PublishedAt", "\"Status\" <> 1 OR \"PublishedAt\" IS NOT NULL");
             foreach (var name in new[] { "Calories", "Protein", "Carbohydrates", "Fat", "Fiber", "Sodium" })
                 t.HasCheckConstraint("CK_Recipes_Nutrition_" + name, $"\"Nutrition_{name}\" IS NULL OR \"Nutrition_{name}\" >= 0");

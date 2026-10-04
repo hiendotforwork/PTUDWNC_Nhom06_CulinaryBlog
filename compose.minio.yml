@@ -1,0 +1,13 @@
+services:
+  api:
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      FileStorage__Provider: Minio
+      MinIO__Endpoint: minio:9000
+      MinIO__PublicBaseUrl: http://localhost:9000
+      MinIO__UseSsl: "false"
+      MinIO__BucketName: culinary-blog
+      MinIO__AccessKey: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER locally}
+      MinIO__SecretKey: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD locally}

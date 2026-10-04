@@ -4,6 +4,8 @@
 namespace CulinaryBlog.API.Services;
 
 using CulinaryBlog.Application.Interfaces;
+using CulinaryBlog.Application.Files;
+using CulinaryBlog.Infrastructure.Storage;
 using Microsoft.AspNetCore.Hosting;
 
 // Class triển khai IFileStorageService bằng thư mục wwwroot/uploads.
@@ -15,6 +17,9 @@ public sealed class LocalFileStorageService(IWebHostEnvironment environment) : I
     public async Task<StoredFile> UploadAsync(Stream stream, string contentType, string extension, string folder, CancellationToken cancellationToken)
     {
         var root = Path.Combine(environment.ContentRootPath, "wwwroot");
+        MinioFileStorageService.ValidateFolder(folder);
+        await using var validated = await ImageFile.ReadAsync(stream, contentType, extension, cancellationToken);
+        extension = ImageFile.Detect(validated.GetBuffer().AsSpan(0, (int)validated.Length))!.Value.Extension;
         var relativeDirectory = Path.Combine("uploads", folder.Replace('/', Path.DirectorySeparatorChar));
         var directory = Path.GetFullPath(Path.Combine(root, relativeDirectory));
         var rootFullPath = Path.GetFullPath(root) + Path.DirectorySeparatorChar;
@@ -22,7 +27,7 @@ public sealed class LocalFileStorageService(IWebHostEnvironment environment) : I
         Directory.CreateDirectory(directory);
         var fileName = $"{Guid.NewGuid():N}{extension}";
         await using var output = File.Create(Path.Combine(directory, fileName));
-        await stream.CopyToAsync(output, cancellationToken);
+        await validated.CopyToAsync(output, cancellationToken);
         return new StoredFile('/' + Path.Combine(relativeDirectory, fileName).Replace('\\', '/'));
     }
 
@@ -31,6 +36,7 @@ public sealed class LocalFileStorageService(IWebHostEnvironment environment) : I
     public Task DeleteAsync(string url, CancellationToken cancellationToken)
     {
         var root = Path.Combine(environment.ContentRootPath, "wwwroot");
+        if (!System.Text.RegularExpressions.Regex.IsMatch(url, @"^/uploads/(recipes|avatars)/[A-Za-z0-9_-]+/[a-fA-F0-9]{32}\.(jpg|jpeg|png|webp|avif)$")) throw new ArgumentException("URL is not owned by local storage.");
         var relative = url.TrimStart('/').Replace('/', Path.DirectorySeparatorChar);
         var path = Path.GetFullPath(Path.Combine(root, relative));
         var rootFullPath = Path.GetFullPath(root) + Path.DirectorySeparatorChar;

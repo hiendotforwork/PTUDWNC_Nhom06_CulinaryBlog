@@ -1,7 +1,7 @@
 using CulinaryBlog.Application.Recipes.Queries;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Domain.Enums;
-using CulinaryBlog.Infrastructure.Persistence;
+using CulinaryBlog.Infrastructure.Data;
 using CulinaryBlog.Infrastructure.Recipes;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
@@ -99,17 +99,17 @@ public sealed class RecipeRepositoryTests
         Assert.Equal("slow-pho", result.Items.Single().Slug);
     }
 
-    private static CulinaryBlogDbContext CreateContext(Category category)
+    private static ApplicationDbContext CreateContext(Category category)
     {
-        var options = new DbContextOptionsBuilder<CulinaryBlogDbContext>()
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
-        var context = new CulinaryBlogDbContext(options);
+        var context = new ApplicationDbContext(options);
         context.Categories.Add(category);
         return context;
     }
 
-    private static async Task SeedAsync(CulinaryBlogDbContext context, Category category)
+    private static async Task SeedAsync(ApplicationDbContext context, Category category)
     {
         context.Recipes.AddRange(
             new Recipe
@@ -158,5 +158,5 @@ public sealed class RecipeRepositoryTests
         await context.SaveChangesAsync();
     }
 
-    private static RecipeRepository CreateRepository(CulinaryBlogDbContext context) => new(context);
+    private static RecipeRepository CreateRepository(ApplicationDbContext context) => new(context);
 }

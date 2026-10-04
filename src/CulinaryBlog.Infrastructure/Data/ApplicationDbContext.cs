@@ -1,4 +1,4 @@
-// Tệp này cấu hình DbContext hợp nhất Identity và dữ liệu Recipe trong PostgreSQL/Supabase.
+// Tệp này cấu hình DbContext hợp nhất Identity và dữ liệu Recipe trong PostgreSQL chạy trong Docker.
 // Chức năng: cung cấp DbSet, áp dụng mapping (OnModelCreating), audit/RowVersion (AuditRecipeEntities)
 // và chặn SaveChanges để tự cập nhật thông tin theo dõi.
 
@@ -39,26 +39,16 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
-        // Limit this context to authentication mappings; the assembly also contains recipe mappings.
+        // Apply explicit Identity and Recipe mappings; avoid duplicate legacy context mappings.
         builder.ApplyConfiguration(new ApplicationUserConfiguration());
         builder.ApplyConfiguration(new RefreshTokenConfiguration());
-        if (Database.IsNpgsql())
-        {
-            builder.ApplyConfiguration(new RecipeCategoryConfiguration());
-            builder.ApplyConfiguration(new RecipeEntityConfiguration());
-            builder.ApplyConfiguration(new RecipeIngredientConfiguration());
-            builder.ApplyConfiguration(new RecipeStepConfiguration());
-            builder.ApplyConfiguration(new RecipeImageConfiguration());
-        }
-        else
-        {
-            // Authentication integration tests use EF InMemory, which cannot map NpgsqlTsVector.
-            builder.Ignore<Category>();
-            builder.Ignore<Recipe>();
-            builder.Ignore<RecipeIngredient>();
-            builder.Ignore<RecipeStep>();
-            builder.Ignore<RecipeImage>();
-        }
+        builder.ApplyConfiguration(new RecipeCategoryConfiguration());
+        builder.ApplyConfiguration(new RecipeEntityConfiguration());
+        builder.ApplyConfiguration(new RecipeIngredientConfiguration());
+        builder.ApplyConfiguration(new RecipeStepConfiguration());
+        builder.ApplyConfiguration(new RecipeImageConfiguration());
+        if (!Database.IsNpgsql())
+            builder.Entity<Recipe>().Ignore("SearchVector");
     }
 
     // Chức năng: gán UpdatedAt và RowVersion mới cho thực thể Recipe thay đổi.

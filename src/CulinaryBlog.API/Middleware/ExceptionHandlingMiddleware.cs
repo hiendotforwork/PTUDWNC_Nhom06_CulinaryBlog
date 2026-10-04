@@ -43,6 +43,12 @@ public class ExceptionHandlingMiddleware
 
         var (statusCode, errorCode, title, detail, errors, customExtensions) = exception switch
         {
+            InvalidImageException imageEx => (422, "INVALID_IMAGE", "Invalid image", imageEx.Message,
+                null as IEnumerable<ValidationErrorDetail>, null as IDictionary<string, object?>),
+            FileStorageException => (503, "FILE_STORAGE_UNAVAILABLE", "File storage unavailable", "Kho tệp tạm thời không khả dụng.",
+                null as IEnumerable<ValidationErrorDetail>, null as IDictionary<string, object?>),
+            BadHttpRequestException badRequest => (badRequest.StatusCode, "INVALID_REQUEST", "Invalid request", badRequest.Message,
+                null as IEnumerable<ValidationErrorDetail>, null as IDictionary<string, object?>),
             AuthException authEx => (
                 authEx.StatusCode,
                 authEx.ErrorCode,

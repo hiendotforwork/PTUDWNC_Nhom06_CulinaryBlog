@@ -1,0 +1,46 @@
+name: culinary-blog
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: culinary_blog
+      POSTGRES_USER: culinary
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-culinary_dev_password}
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U culinary -d culinary_blog"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build:
+      context: .
+      dockerfile: src/CulinaryBlog.API/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      FileStorage__Provider: Local
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=culinary_blog;Username=culinary;Password=${POSTGRES_PASSWORD:-culinary_dev_password}
+      Database__AutoMigrate: "true"
+      Database__SeedLab2: "true"
+      Jwt__Secret: ${JWT_SECRET:-CulinaryBlogDockerDevelopmentSecretKey2026AtLeast32Characters}
+      Jwt__Issuer: CulinaryBlog
+      Jwt__Audience: CulinaryBlogApp
+    ports:
+      - "5058:8080"
+    volumes:
+      - recipe-images:/app/wwwroot/uploads
+
+volumes:
+  postgres-data:
+  recipe-images:

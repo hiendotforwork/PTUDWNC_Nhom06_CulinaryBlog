@@ -81,7 +81,7 @@ Hệ thống blog ẩm thực cho phép người dùng khám phá, tìm kiếm v
 ### Backend
 
 - **ASP.NET Core Web API** (.NET 10)
-- **Entity Framework Core 10** + Supabase Database (PostgreSQL)
+- **Entity Framework Core 10** + PostgreSQL 16 trong Docker
 - **MediatR** (CQRS pattern)
 - **Mapster** (object mapping)
 - **JWT Authentication**
@@ -93,31 +93,16 @@ Hệ thống blog ẩm thực cho phép người dùng khám phá, tìm kiếm v
 - .NET 10 SDK
 - Node.js 18+
 - pnpm
-- Tài khoản và project Supabase
-- Redis (tùy chọn, cho caching)
-- MinIO (tùy chọn, cho image storage)
+- Docker Desktop
 
-### Backend
+### Database và Backend
 
 ```bash
-# Di chuyển vào thư mục src
-cd src/CulinaryBlog.Infrastructure
-
-# Cài đặt NuGet packages
-dotnet restore
-
-# Tạo migration (nếu cần)
-dotnet ef migrations add <MigrationName> --startup-project ../CulinaryBlog.API
-
-# Chạy migration
-dotnet ef database update --startup-project ../CulinaryBlog.API
-
-# Di chuyển vào thư mục API và chạy
-cd ../CulinaryBlog.API
-dotnet run
+# Tại thư mục gốc dự án
+docker compose up -d --build
 ```
 
-Backend sẽ chạy tại `http://localhost:5058`
+Lệnh này chạy PostgreSQL, tự áp dụng migration, tạo dữ liệu mẫu và chạy API tại `http://localhost:5058`. Database và ảnh được giữ trong Docker Volume khi dừng container.
 
 ### Frontend
 
@@ -134,40 +119,13 @@ pnpm dev
 
 Frontend sẽ chạy tại `http://localhost:3000`
 
-### Cấu hình Cơ sở dữ liệu (Supabase)
+### Dữ liệu Docker
 
-#### 1. Thông số kết nối của nhóm
-
-- **Host:** `aws-0-ap-northeast-1.pooler.supabase.com`
-- **Port:** `5432` (Session Mode - bắt buộc cho EF Core)
-- **Database:** `postgres`
-- **Username:** `postgres.wflwzknzqaajqzzuwaxq`
-- **Password:** _(Liên hệ Hiền để nhận mật khẩu nội bộ)_
-
-#### 2. Cài đặt bằng một dòng lệnh (Khuyên dùng - Bảo mật tuyệt đối)
-
-Thành viên mở Terminal tại thư mục gốc dự án và chạy lệnh sau (thay `<mat_khau_db>` bằng mật khẩu được chia sẻ):
-
-```bash
-dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=aws-0-ap-northeast-1.pooler.supabase.com;Port=5432;Database=postgres;Username=postgres.wflwzknzqaajqzzuwaxq;Password=<mat_khau_db>;SSL Mode=Require;Trust Server Certificate=true" --project src/CulinaryBlog.API
-```
-
-_(Lệnh này lưu mật khẩu vào máy cá nhân ngoài cây thư mục Git, 100% không sợ bị commit lộ lên GitHub)._
-
-#### 3. Cách phụ: Dùng `appsettings.Development.json`
-
-Nếu không dùng CLI, bạn có thể tạo/sửa file `src/CulinaryBlog.API/appsettings.Development.json`:
-
-```json
-{
-  "ConnectionStrings": {
-    "DefaultConnection": "Host=aws-0-ap-northeast-1.pooler.supabase.com;Port=5432;Database=postgres;Username=postgres.wflwzknzqaajqzzuwaxq;Password=<mat_khau_db>;SSL Mode=Require;Trust Server Certificate=true"
-  }
-}
-```
-
-> [!WARNING]
-> Không dùng Direct Connection (`db.wflwzknzqaajqzzuwaxq.supabase.co`) vì mạng internet thông thường chưa có IPv6 sẽ bị lỗi timeout.
+- PostgreSQL trên máy: `localhost:55432`, database `culinary_blog`, user `culinary`.
+- Sao chép `.env.example` thành `.env` nếu muốn đổi mật khẩu phát triển.
+- `docker compose down` dừng hệ thống nhưng giữ dữ liệu.
+- `docker compose down -v` xóa toàn bộ database và ảnh local để tạo lại từ đầu.
+- Mỗi thành viên có dữ liệu riêng trên máy; Git chỉ đồng bộ code và migration.
 
 ## Vai trò người dùng
 

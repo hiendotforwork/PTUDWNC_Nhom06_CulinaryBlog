@@ -262,7 +262,7 @@ namespace CulinaryBlog.Infrastructure.Migrations
                         {
                             t.HasCheckConstraint("CK_Recipes_Description", "length(btrim(\"Description\")) BETWEEN 1 AND 2000");
 
-                            t.HasCheckConstraint("CK_Recipes_Enums", "\"Status\" BETWEEN 0 AND 2 AND \"Difficulty\" BETWEEN 1 AND 4");
+                            t.HasCheckConstraint("CK_Recipes_Enums", "\"Status\" BETWEEN 0 AND 2 AND \"Difficulty\" BETWEEN 1 AND 3");
 
                             t.HasCheckConstraint("CK_Recipes_Nutrition_Calories", "\"Nutrition_Calories\" IS NULL OR \"Nutrition_Calories\" >= 0");
 

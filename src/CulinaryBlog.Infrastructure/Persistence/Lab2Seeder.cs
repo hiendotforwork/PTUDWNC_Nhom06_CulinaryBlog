@@ -54,7 +54,7 @@ public static class Lab2Seeder
                 Description = "Dữ liệu ngẫu nhiên phục vụ kiểm thử phần mềm, không phải hướng dẫn nấu ăn đã kiểm chứng.",
                 CategoryId = Key("category-" + i % 20), AuthorId = authorId,
                 PrepTime = random.Next(1, 31), CookTime = random.Next(0, 91), Servings = random.Next(1, 9),
-                Difficulty = (RecipeDifficulty)random.Next(1, 5), Status = (RecipeStatus)(i % 3),
+                Difficulty = (RecipeDifficulty)random.Next(1, 4), Status = (RecipeStatus)(i % 3),
                 PublishedAt = i % 3 == 1 ? DateTimeOffset.UtcNow : null,
                 Nutrition = new() { Calories = random.Next(100, 801), Protein = random.Next(0, 61), Carbohydrates = random.Next(0, 101), Fat = random.Next(0, 41) }
             };
