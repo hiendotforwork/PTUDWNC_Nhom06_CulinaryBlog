@@ -1,8 +1,7 @@
 "use client";
 
-import React, { use, useState, useMemo } from "react";
+import React, { use, useState, useMemo, useEffect } from "react";
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import {
   Utensils,
   Sunrise,
@@ -16,8 +15,9 @@ import {
   Grid,
   List,
 } from "lucide-react";
-import { useApp } from "../../context/AppContext";
 import { RecipeGrid } from "../../components/recipe/RecipeGrid";
+import { getCategoryDetail } from "../../lib/api";
+import { Category, Recipe } from "../../lib/types";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -26,13 +26,55 @@ interface PageProps {
 export default function CategoryDetailPage({ params }: PageProps) {
   const resolvedParams = use(params);
   const { slug } = resolvedParams;
-  const { categories, recipes } = useApp();
-
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>("all");
   const [sortBy, setSortBy] = useState<string>("newest");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [page, setPage] = useState(1);
+  const [category, setCategory] = useState<Category | null>(null);
+  const [categoryRecipes, setCategoryRecipes] = useState<Recipe[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [loadedPage, setLoadedPage] = useState<number | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const isLoading = loadedPage !== page;
+  const visibleError = loadedPage === page ? loadError : null;
 
-  const category = categories.find((c) => c.slug === slug);
+  useEffect(() => {
+    let active = true;
+
+    getCategoryDetail(slug, page, 12)
+      .then((detail) => {
+        if (!active) return;
+        setLoadError(null);
+        setCategory(detail.category);
+        setCategoryRecipes(detail.recipes.items);
+        setTotalCount(detail.recipes.totalCount);
+        setTotalPages(detail.recipes.totalPages);
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        const statusCode = typeof error === "object" && error !== null && "statusCode" in error
+          ? (error as { statusCode?: unknown }).statusCode
+          : undefined;
+        if (statusCode === 404) {
+          setLoadError("Không tìm thấy danh mục này.");
+        } else {
+          const message = error instanceof Error
+            ? error.message
+            : typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
+              ? error.message
+              : "Không thể tải danh mục. Vui lòng thử lại.";
+          setLoadError(message);
+        }
+      })
+      .finally(() => {
+        if (active) setLoadedPage(page);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [slug, page]);
 
   const getCategoryIcon = (iconName: string) => {
     switch (iconName) {
@@ -53,21 +95,12 @@ export default function CategoryDetailPage({ params }: PageProps) {
     }
   };
 
-  const categoryRecipes = useMemo(() => {
-    return recipes.filter((r) => {
-      if (r.status !== "Published") return false;
-      if (category && category.slug !== "all" && r.category.slug !== category.slug) {
-        return false;
-      }
-      if (selectedDifficulty !== "all" && r.difficultyLevel !== selectedDifficulty) {
-        return false;
-      }
-      return true;
-    });
-  }, [recipes, category, selectedDifficulty]);
+  const filteredRecipes = useMemo(() => categoryRecipes.filter((recipe) =>
+    selectedDifficulty === "all" || recipe.difficultyLevel === selectedDifficulty
+  ), [categoryRecipes, selectedDifficulty]);
 
   const sortedRecipes = useMemo(() => {
-    const list = [...categoryRecipes];
+    const list = [...filteredRecipes];
     if (sortBy === "newest") {
       list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     } else if (sortBy === "popular") {
@@ -76,11 +109,7 @@ export default function CategoryDetailPage({ params }: PageProps) {
       list.sort((a, b) => a.title.localeCompare(b.title, "vi"));
     }
     return list;
-  }, [categoryRecipes, sortBy]);
-
-  if (!category && slug !== "all") {
-    notFound();
-  }
+  }, [filteredRecipes, sortBy]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 flex flex-col gap-8">
@@ -108,7 +137,7 @@ export default function CategoryDetailPage({ params }: PageProps) {
                 {category?.name}
               </h1>
               <span className="px-3 py-1 rounded-full bg-[#FAF9F6] dark:bg-[#2F2B27] border border-[#DCD8D2] dark:border-[#3D3934] text-xs font-bold text-[#C98F7D]">
-                {categoryRecipes.length} công thức
+                {totalCount} công thức
               </span>
             </div>
             <p className="text-sm text-[#8A817C] dark:text-[#A8A29E] max-w-2xl leading-relaxed">
@@ -176,12 +205,45 @@ export default function CategoryDetailPage({ params }: PageProps) {
       </div>
 
       {/* Recipe Grid */}
-      <RecipeGrid
-        recipes={sortedRecipes}
-        viewMode={viewMode}
-        emptyTitle={`Chưa có công thức cho danh mục ${category?.name}`}
-        emptyDescription="Hãy là người đầu tiên đóng góp công thức thơm ngon vào danh mục này!"
-      />
+      {visibleError ? (
+        <div className="rounded-2xl border border-[#DCD8D2] dark:border-[#3D3934] bg-white dark:bg-[#24211E] p-8 text-center">
+          <p className="text-sm text-[#8A817C] dark:text-[#A8A29E]">{visibleError}</p>
+          <Link href="/" className="inline-block mt-4 text-sm font-semibold text-[#C98F7D] hover:underline">
+            Về trang chủ
+          </Link>
+        </div>
+      ) : (
+        <>
+          <RecipeGrid
+            recipes={sortedRecipes}
+            isLoading={isLoading}
+            viewMode={viewMode}
+            emptyTitle={`Chưa có công thức cho danh mục ${category?.name || ""}`}
+            emptyDescription="Hãy là người đầu tiên đóng góp công thức thơm ngon vào danh mục này!"
+          />
+          {totalPages > 1 && (
+            <nav aria-label="Phân trang công thức" className="flex items-center justify-center gap-4">
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                disabled={page <= 1 || isLoading}
+                className="px-4 py-2 rounded-full border border-[#DCD8D2] dark:border-[#3D3934] disabled:opacity-40"
+              >
+                Trang trước
+              </button>
+              <span className="text-sm text-[#8A817C]">Trang {page} / {totalPages}</span>
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                disabled={page >= totalPages || isLoading}
+                className="px-4 py-2 rounded-full border border-[#DCD8D2] dark:border-[#3D3934] disabled:opacity-40"
+              >
+                Trang sau
+              </button>
+            </nav>
+          )}
+        </>
+      )}
     </div>
   );
 }
