@@ -83,6 +83,17 @@ export async function login(data: LoginRequest): Promise<AuthResponse> {
   return handleResponse<AuthResponse>(res);
 }
 
+// Chức năng: gửi yêu cầu làm mới access token.
+// Input: refreshTokenValue - refresh token hiện tại. Output: token mới và thông tin người dùng.
+export async function refreshToken(refreshTokenValue: string): Promise<AuthResponse> {
+  const res = await fetch(`${API_BASE}/api/v1/auth/refresh`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refreshToken: refreshTokenValue }),
+  });
+  return handleResponse<AuthResponse>(res);
+}
+
 // Chức năng: tạo header JSON và Bearer token cho request.
 // Input: json - có gửi JSON hay không. Output: tập header HTTP.
 function authHeaders(json = false): HeadersInit {
