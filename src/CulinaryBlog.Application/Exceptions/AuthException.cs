@@ -36,4 +36,7 @@ public class AuthException : Exception
 
     public static AuthException UserNotFound() =>
         new("AUTH_USER_NOT_FOUND", "Tài khoản không tồn tại.", 404);
+
+    public static AuthException TokenReuseDetected() =>
+        new("AUTH_TOKEN_REUSE", "Refresh token reuse detected. Possible security threat.", 401);
 }
