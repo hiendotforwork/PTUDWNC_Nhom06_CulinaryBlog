@@ -306,6 +306,26 @@ export async function createCategory(data: { name: string; description: string }
   return mapCategory(await handleResponse<ApiCategory>(res));
 }
 
+export async function updateCategory(
+  id: string,
+  data: { name: string; description: string },
+): Promise<Category> {
+  const res = await fetch(`${API_BASE}/api/v1/categories/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: authHeaders(true),
+    body: JSON.stringify(data),
+  });
+  return mapCategory(await handleResponse<ApiCategory>(res));
+}
+
+export async function deleteCategory(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/v1/categories/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!res.ok) await handleResponse<never>(res);
+}
+
 export async function getRecipes(mine = false): Promise<Recipe[]> {
   const res = await fetch(`${API_BASE}/api/v1/recipes?page=1&pageSize=50${mine ? "&mine=true" : ""}`, {
     headers: mine ? authHeaders() : undefined,

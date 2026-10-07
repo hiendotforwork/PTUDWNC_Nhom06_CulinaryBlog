@@ -13,6 +13,8 @@ import {
   getRecipe,
   getCategories as apiGetCategories,
   createCategory as apiCreateCategory,
+  updateCategory as apiUpdateCategory,
+  deleteCategory as apiDeleteCategory,
   createRecipe,
   updateRecipeApi,
   mutateRecipe,
@@ -35,6 +37,8 @@ interface AppContextType {
   recipes: Recipe[];
   categories: Category[];
   addCategory: (data: { name: string; description: string }) => Promise<Category>;
+  updateCategory: (id: string, data: { name: string; description: string }) => Promise<Category>;
+  deleteCategory: (id: string) => Promise<void>;
   favorites: string[];
   toggleFavorite: (recipeId: string) => void;
   addRecipe: (recipeData: Omit<Recipe, "id" | "slug" | "createdAt" | "updatedAt" | "viewsCount" | "likesCount" | "author">) => Promise<Recipe>;
@@ -75,7 +79,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           email: stored.email,
           avatarUrl: stored.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
           bio: stored.bio,
-          role: (stored.roles?.includes("Author") ? "User" : (stored.roles?.[0] as "User" | "Admin")) || "User",
+          role: stored.roles?.includes("Admin") ? "Admin" : "User",
           createdAt: stored.createdAt || new Date().toISOString(),
         });
       }
@@ -182,6 +186,27 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       return all ? [all, ...items] : items;
     });
     return category;
+  };
+
+  const updateCategory = async (
+    id: string,
+    data: { name: string; description: string },
+  ): Promise<Category> => {
+    const updated = await apiUpdateCategory(id, data);
+    setCategories((previous) => {
+      const all = previous.find((item) => item.slug === "all");
+      const items = previous
+        .filter((item) => item.slug !== "all" && item.id !== updated.id)
+        .concat(updated)
+        .sort((left, right) => left.name.localeCompare(right.name, "vi"));
+      return all ? [all, ...items] : items;
+    });
+    return updated;
+  };
+
+  const deleteCategory = async (id: string): Promise<void> => {
+    await apiDeleteCategory(id);
+    setCategories((previous) => previous.filter((category) => category.id !== id));
   };
 
   const toggleFavorite = (recipeId: string) => {
@@ -370,7 +395,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         email: response.user.email,
         avatarUrl: response.user.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
         bio: response.user.bio,
-        role: (response.user.roles?.includes("Author") ? "User" : (response.user.roles?.[0] as "User" | "Admin")) || "User",
+        role: response.user.roles?.includes("Admin") ? "Admin" : "User",
         createdAt: new Date().toISOString(),
       };
 
@@ -461,7 +486,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         email: response.user.email,
         avatarUrl: response.user.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
         bio: response.user.bio,
-        role: (response.user.roles?.includes("Author") ? "User" : (response.user.roles?.[0] as "User" | "Admin")) || "User",
+        role: response.user.roles?.includes("Admin") ? "Admin" : "User",
         createdAt: new Date().toISOString(),
       };
 
@@ -532,7 +557,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       email: authUser.email,
       avatarUrl: authUser.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
       bio: authUser.bio,
-      role: (authUser.roles?.includes("Author") ? "User" : (authUser.roles?.[0] as "User" | "Admin")) || "User",
+      role: authUser.roles?.includes("Admin") ? "Admin" : "User",
       createdAt: new Date().toISOString(),
     };
 
@@ -560,6 +585,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         recipes,
         categories,
         addCategory,
+        updateCategory,
+        deleteCategory,
         favorites,
         toggleFavorite,
         addRecipe,
