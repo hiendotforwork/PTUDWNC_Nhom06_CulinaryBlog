@@ -58,7 +58,10 @@ function decodeJwt(token: string): { exp: number } | null {
   try {
     const base64Url = token.split(".")[1];
     if (!base64Url) return null;
-    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    let base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    while (base64.length % 4 !== 0) {
+      base64 += "=";
+    }
     const jsonPayload = decodeURIComponent(
       atob(base64)
         .split("")
@@ -101,34 +104,46 @@ export function getTokenExpiry(): Date | null {
   return new Date(decoded.exp * 1000);
 }
 
+let refreshPromise: Promise<boolean> | null = null;
+
 /**
  * Refresh the access token using the stored refresh token
  */
 export async function refreshAccessToken(): Promise<boolean> {
   if (typeof window === "undefined") return false;
 
-  const refreshTokenValue = getRefreshToken();
-  if (!refreshTokenValue) {
-    clearAuth();
-    return false;
+  if (refreshPromise) {
+    return refreshPromise;
   }
 
-  try {
-    const response = await refreshToken(refreshTokenValue);
-
-    // Update stored tokens
-    setToken(response.accessToken);
-    setRefreshToken(response.refreshToken);
-
-    // Update user if provided
-    if (response.user) {
-      setStoredUser(response.user);
+  refreshPromise = (async () => {
+    const refreshTokenValue = getRefreshToken();
+    if (!refreshTokenValue) {
+      clearAuth();
+      return false;
     }
 
-    return true;
-  } catch {
-    // Refresh failed, clear auth
-    clearAuth();
-    return false;
-  }
+    try {
+      const response = await refreshToken(refreshTokenValue);
+
+      // Update stored tokens
+      setToken(response.accessToken);
+      setRefreshToken(response.refreshToken);
+
+      // Update user if provided
+      if (response.user) {
+        setStoredUser(response.user);
+      }
+
+      return true;
+    } catch {
+      // Refresh failed, clear auth
+      clearAuth();
+      return false;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
 }

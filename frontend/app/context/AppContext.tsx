@@ -72,48 +72,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // Start with null; restore from localStorage via useEffect below
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-  // Restore auth state after hydration so server and browser render the same first frame.
-  useEffect(() => {
-    const timer = window.setTimeout(async () => {
-      const storedRefreshToken = auth.getRefreshToken();
-      if (storedRefreshToken && auth.isTokenExpiringSoon()) {
-        const success = await auth.refreshAccessToken();
-        if (success) {
-          const user = auth.getStoredUser();
-          if (user) {
-            setCurrentUser({
-              id: user.id,
-              displayName: user.displayName,
-              userName: user.userName,
-              email: user.email,
-              avatarUrl: user.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
-              bio: user.bio,
-              role: (user.roles?.includes("Author") ? "User" : (user.roles?.[0] as "User" | "Admin")) || "User",
-              createdAt: user.createdAt || new Date().toISOString(),
-            });
-            return;
-          }
-        }
-      }
-
-      const stored = auth.getStoredUser();
-      if (stored) {
-        setCurrentUser({
-          id: stored.id,
-          displayName: stored.displayName,
-          userName: stored.userName,
-          email: stored.email,
-          avatarUrl: stored.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
-          bio: stored.bio,
-          role: (stored.roles?.includes("Author") ? "User" : (stored.roles?.[0] as "User" | "Admin")) || "User",
-          createdAt: stored.createdAt || new Date().toISOString(),
-        });
-      }
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, []);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
-
   const [categories, setCategories] = useState<Category[]>(MOCK_CATEGORIES);
 
   const [favorites, setFavorites] = useState<string[]>(() => {
@@ -163,9 +122,39 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       showToast("error", message);
     }
   };
+
+  // Khởi tạo phiên đăng nhập sau hydration, làm mới token nếu sắp hết hạn, sau đó nạp công thức
   useEffect(() => {
-    const timer = window.setTimeout(() => void reloadRecipes(), 0);
-    return () => window.clearTimeout(timer);
+    let cancelled = false;
+    const init = async () => {
+      const storedRefreshToken = auth.getRefreshToken();
+      if (storedRefreshToken && auth.isTokenExpiringSoon()) {
+        await auth.refreshAccessToken();
+      }
+
+      if (cancelled) return;
+
+      const stored = auth.getStoredUser();
+      if (stored) {
+        setCurrentUser({
+          id: stored.id,
+          displayName: stored.displayName,
+          userName: stored.userName,
+          email: stored.email,
+          avatarUrl: stored.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
+          bio: stored.bio,
+          role: (stored.roles?.includes("Author") ? "User" : (stored.roles?.[0] as "User" | "Admin")) || "User",
+          createdAt: stored.createdAt || new Date().toISOString(),
+        });
+      }
+
+      await reloadRecipes();
+    };
+
+    init();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const removeToast = (id: string) => {

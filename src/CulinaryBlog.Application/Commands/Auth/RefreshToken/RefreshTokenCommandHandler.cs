@@ -32,46 +32,46 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, A
     public async Task<AuthResponse> Handle(RefreshTokenCommand request, CancellationToken cancellationToken)
     {
         var tokenHash = RefreshToken.HashToken(request.RefreshToken);
-        var refreshToken = await _refreshTokenRepository.GetByTokenHashAsync(tokenHash, cancellationToken);
 
-        // A1: Token not found
-        if (refreshToken == null)
-        {
-            _logger.LogWarning("Refresh token not found");
-            throw AuthException.InvalidCredentials();
-        }
-
-        // A3: Token reuse attack detected
-        if (refreshToken.IsRevoked)
-        {
-            _logger.LogWarning("SECURITY ALERT: Refresh token reuse detected for user {UserId}", refreshToken.UserId);
-            throw AuthException.TokenReuseDetected();
-        }
-
-        // A2: Token expired
-        if (refreshToken.IsExpired)
-        {
-            _logger.LogWarning("Refresh token expired for user {UserId}", refreshToken.UserId);
-            throw AuthException.InvalidCredentials();
-        }
-
-        // A4: User deleted or locked
-        var user = refreshToken.User;
-        if (user == null || !user.IsActive)
-        {
-            _logger.LogWarning("User not found or inactive for refresh token");
-            throw AuthException.InvalidCredentials();
-        }
-
-        // Get user roles
-        var roles = await _userRepository.GetRolesAsync(user);
-
-        // Begin transaction with Serializable isolation
         await using var transaction = await _unitOfWork.BeginTransactionAsync(
             System.Data.IsolationLevel.Serializable, cancellationToken);
 
         try
         {
+            var refreshToken = await _refreshTokenRepository.GetByTokenHashAsync(tokenHash, cancellationToken);
+
+            // A1: Token not found
+            if (refreshToken == null)
+            {
+                _logger.LogWarning("Refresh token not found");
+                throw AuthException.InvalidCredentials();
+            }
+
+            // A3: Token reuse attack detected
+            if (refreshToken.IsRevoked)
+            {
+                _logger.LogWarning("SECURITY ALERT: Refresh token reuse detected for user {UserId}", refreshToken.UserId);
+                throw AuthException.TokenReuseDetected();
+            }
+
+            // A2: Token expired
+            if (refreshToken.IsExpired)
+            {
+                _logger.LogWarning("Refresh token expired for user {UserId}", refreshToken.UserId);
+                throw AuthException.InvalidCredentials();
+            }
+
+            // A4: User deleted or locked
+            var user = refreshToken.User;
+            if (user == null || !user.IsActive || (user.LockoutEnd.HasValue && user.LockoutEnd.Value > DateTimeOffset.UtcNow))
+            {
+                _logger.LogWarning("User not found, inactive, or locked out for refresh token");
+                throw AuthException.InvalidCredentials();
+            }
+
+            // Get user roles
+            var roles = await _userRepository.GetRolesAsync(user);
+
             // Revoke old token with reference to new token
             var newRawToken = _tokenService.GenerateRefreshToken();
             refreshToken.Revoke(RefreshToken.HashToken(newRawToken));

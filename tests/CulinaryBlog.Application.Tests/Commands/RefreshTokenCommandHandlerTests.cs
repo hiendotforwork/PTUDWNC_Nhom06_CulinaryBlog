@@ -154,4 +154,28 @@ public class RefreshTokenCommandHandlerTests
         var ex = await act.Should().ThrowAsync<AuthException>();
         ex.Which.StatusCode.Should().Be(401);
     }
+
+    [Fact]
+    public async Task Handle_UserLockedOut_ThrowsUnauthorized()
+    {
+        // Arrange
+        var userId = Guid.NewGuid().ToString();
+        var user = ApplicationUser.Create("Test", "test@test.com", "test");
+        user.Id = userId;
+        user.IsActive = true;
+        user.LockoutEnd = DateTimeOffset.UtcNow.AddMinutes(15); // Currently locked out
+
+        var token = RefreshToken.Create(userId, "valid-token", daysToLive: 7);
+        token.User = user;
+
+        _refreshTokenRepoMock.Setup(x => x.GetByTokenHashAsync(It.IsAny<string>(), default))
+            .ReturnsAsync(token);
+
+        // Act
+        var act = () => _handler.Handle(new RefreshTokenCommand("valid-token"), CancellationToken.None);
+
+        // Assert
+        var ex = await act.Should().ThrowAsync<AuthException>();
+        ex.Which.StatusCode.Should().Be(401);
+    }
 }
