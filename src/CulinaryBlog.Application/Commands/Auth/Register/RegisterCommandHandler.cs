@@ -13,17 +13,20 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, AuthRespo
     private readonly ITokenService _tokenService;
     private readonly IRefreshTokenRepository _refreshTokenRepository;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IBackgroundTaskQueue? _backgroundTasks;
 
     public RegisterCommandHandler(
         IUserRepository userRepository,
         ITokenService tokenService,
         IRefreshTokenRepository refreshTokenRepository,
-        IUnitOfWork unitOfWork)
+        IUnitOfWork unitOfWork,
+        IBackgroundTaskQueue? backgroundTasks = null)
     {
         _userRepository = userRepository;
         _tokenService = tokenService;
         _refreshTokenRepository = refreshTokenRepository;
         _unitOfWork = unitOfWork;
+        _backgroundTasks = backgroundTasks;
     }
 
     public async Task<AuthResponse> Handle(RegisterCommand request, CancellationToken cancellationToken)
@@ -91,6 +94,9 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, AuthRespo
         // 9. Persist refresh token hash
         await _refreshTokenRepository.AddAsync(refreshTokenEntity, cancellationToken);
         await _refreshTokenRepository.SaveChangesAsync(cancellationToken);
+
+        // Persist task intent in the same transaction as the registration.
+        if (_backgroundTasks is not null) await _backgroundTasks.WelcomeAsync(user.Id, cancellationToken);
 
         // 10. Commit transaction
         await transaction.CommitAsync(cancellationToken);

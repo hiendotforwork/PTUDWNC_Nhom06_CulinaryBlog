@@ -162,6 +162,7 @@ public sealed class RecipesController(
         };
         repository.AddRecipe(recipe);
         await unitOfWork.SaveChangesAsync(cancellationToken);
+        CulinaryBlog.API.Services.ObservabilityTelemetry.RecipesCreated.Add(1);
         return CreatedAtAction(nameof(GetBySlug), new { slug = recipe.Slug },
             new RecipeMutationResponse(recipe.Id, recipe.Slug, recipe.Status, Convert.ToBase64String(recipe.RowVersion)));
     }
@@ -289,10 +290,12 @@ public sealed class RecipesController(
     {
         if (!TryRowVersion(rowVersion, out var version, out var error)) return error!;
         repository.SetOriginalVersion(recipe, version!);
+        var newlyPublished = recipe.Status != RecipeStatus.Published && status == RecipeStatus.Published;
         recipe.Status = status; recipe.PublishedAt = publishedAt;
         try
         {
             await unitOfWork.SaveChangesAsync(ct);
+            if (newlyPublished) CulinaryBlog.API.Services.ObservabilityTelemetry.RecipesPublished.Add(1);
             return Ok(new RecipeMutationResponse(recipe.Id, recipe.Slug, recipe.Status, Convert.ToBase64String(recipe.RowVersion)));
         }
         catch (DbUpdateConcurrencyException) { return Conflict(ConcurrencyError()); }
