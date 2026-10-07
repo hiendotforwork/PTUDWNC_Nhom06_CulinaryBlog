@@ -148,6 +148,11 @@ builder.Services.AddRateLimiter(options =>
         RateLimitPartition.GetFixedWindowLimiter(
             context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
             _ => new FixedWindowRateLimiterOptions { PermitLimit = defaultPermitLimit, Window = TimeSpan.FromMinutes(1) }));
+    var refreshPermitLimit = isTesting ? 1000 : 30;
+    options.AddPolicy("RefreshRateLimit", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
+            _ => new FixedWindowRateLimiterOptions { PermitLimit = refreshPermitLimit, Window = TimeSpan.FromMinutes(1) }));
 });
 
 builder.Services.AddControllers().ConfigureApiBehaviorOptions(options =>
