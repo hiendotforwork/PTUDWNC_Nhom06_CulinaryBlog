@@ -20,7 +20,7 @@ public sealed class CreateCategoryCommandHandler(
         CancellationToken cancellationToken)
     {
         var name = request.Name.Trim();
-        if (await categories.NameExistsAsync(name, cancellationToken))
+        if (await categories.NameExistsAsync(name, cancellationToken: cancellationToken))
             throw new CategoryConflictException("CATEGORY_NAME_EXISTS", "Tên danh mục đã tồn tại.");
 
         var slugBase = Slugify(name);

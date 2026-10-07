@@ -14,7 +14,8 @@ namespace CulinaryBlog.API.Controllers;
 [Route("api/v1/categories")]
 public sealed class CategoriesController(
     ISender sender,
-    IValidator<CreateCategoryCommand> createCategoryValidator) : ControllerBase
+    IValidator<CreateCategoryCommand> createCategoryValidator,
+    IValidator<UpdateCategoryCommand> updateCategoryValidator) : ControllerBase
 {
     [HttpGet]
     [AllowAnonymous]
@@ -69,6 +70,37 @@ public sealed class CategoriesController(
         var category = await sender.Send(command, cancellationToken);
         return CreatedAtAction(nameof(GetBySlug), new { slug = category.Slug }, category);
     }
+
+    [HttpPut("{id:guid}")]
+    [Authorize(Roles = AppRoles.Admin)]
+    [ProducesResponseType(typeof(CategoryDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<CategoryDto>> Update(
+        Guid id,
+        UpdateCategoryRequest request,
+        CancellationToken cancellationToken)
+    {
+        var command = new UpdateCategoryCommand(id, request.Name, request.Description);
+        await updateCategoryValidator.ValidateAndThrowAsync(command, cancellationToken);
+        var category = await sender.Send(command, cancellationToken);
+        return category is null ? NotFound() : Ok(category);
+    }
+
+    [HttpDelete("{id:guid}")]
+    [Authorize(Roles = AppRoles.Admin)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
+    {
+        var deleted = await sender.Send(new DeleteCategoryCommand(id), cancellationToken);
+        return deleted ? NoContent() : NotFound();
+    }
 }
 
 public sealed record CreateCategoryRequest(string Name, string? Description);
+public sealed record UpdateCategoryRequest(string Name, string? Description);

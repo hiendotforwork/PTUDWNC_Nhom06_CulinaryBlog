@@ -58,7 +58,7 @@ export default function CreateCategoryPage() {
   return (
     <main className="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
       <Link
-        href="/"
+        href="/admin/categories"
         className="inline-flex items-center gap-2 text-sm text-[#8A817C] hover:text-[#C98F7D] transition-colors"
       >
         <ArrowLeft className="w-4 h-4" />
@@ -109,7 +109,7 @@ export default function CreateCategoryPage() {
             <Button type="submit" isLoading={isSubmitting} leftIcon={<PlusCircle className="w-4 h-4" />}>
               Tạo danh mục
             </Button>
-            <Link href="/">
+            <Link href="/admin/categories">
               <Button type="button" variant="outline">Hủy</Button>
             </Link>
           </div>

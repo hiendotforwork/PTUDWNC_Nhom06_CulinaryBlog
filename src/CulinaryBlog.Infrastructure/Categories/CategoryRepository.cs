@@ -82,20 +82,49 @@ public sealed class CategoryRepository(ApplicationDbContext db) : ICategoryRepos
             PagedResult<RecipeSummaryDto>.Create(items, totalCount, page, pageSize));
     }
 
-    public Task<bool> NameExistsAsync(string name, CancellationToken cancellationToken = default)
+    public Task<Category?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        return db.Categories.SingleOrDefaultAsync(category => category.Id == id, cancellationToken);
+    }
+
+    public Task<bool> NameExistsAsync(
+        string name,
+        Guid? excludingId = null,
+        CancellationToken cancellationToken = default)
     {
         var normalizedName = name.ToLowerInvariant();
         return db.Categories.AnyAsync(
-            category => category.Name.ToLower() == normalizedName,
+            category => category.Name.ToLower() == normalizedName
+                && (!excludingId.HasValue || category.Id != excludingId.Value),
             cancellationToken);
     }
 
     public Task<bool> SlugExistsAsync(string slug, CancellationToken cancellationToken = default)
     {
-        return db.Categories.AnyAsync(category => category.Slug == slug, cancellationToken);
+        return db.Categories
+            .IgnoreQueryFilters()
+            .AnyAsync(category => category.Slug == slug, cancellationToken);
+    }
+
+    public Task<int> CountRecipesAsync(Guid categoryId, CancellationToken cancellationToken = default)
+    {
+        return db.Recipes.CountAsync(recipe => recipe.CategoryId == categoryId, cancellationToken);
+    }
+
+    public Task<int> CountPublishedRecipesAsync(
+        Guid categoryId,
+        CancellationToken cancellationToken = default)
+    {
+        return db.Recipes.CountAsync(
+            recipe => recipe.CategoryId == categoryId && recipe.Status == RecipeStatus.Published,
+            cancellationToken);
     }
 
     public void Add(Category category) => db.Categories.Add(category);
+
+    public void Update(Category category) => db.Categories.Update(category);
+
+    public void SoftDelete(Category category) => category.IsDeleted = true;
 
     public async Task SaveChangesAsync(CancellationToken cancellationToken = default)
     {

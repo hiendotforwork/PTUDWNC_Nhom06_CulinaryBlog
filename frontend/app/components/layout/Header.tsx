@@ -253,14 +253,24 @@ export const Header: React.FC = () => {
                   </div>
                   <div className="py-2 flex flex-col gap-1">
                     {currentUser.role === "Admin" && (
-                      <Link
-                        href="/admin/categories/new"
-                        onClick={() => setIsUserMenuOpen(false)}
-                        className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-[#463F3A] dark:text-[#EAE6DF] hover:bg-[#FAF9F6] dark:hover:bg-[#2E2A26] transition-colors"
-                      >
-                        <PlusCircle className="w-4 h-4 text-[#C98F7D]" />
-                        <span>Tạo danh mục</span>
-                      </Link>
+                      <>
+                        <Link
+                          href="/admin/categories"
+                          onClick={() => setIsUserMenuOpen(false)}
+                          className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-[#463F3A] dark:text-[#EAE6DF] hover:bg-[#FAF9F6] dark:hover:bg-[#2E2A26] transition-colors"
+                        >
+                          <BookOpen className="w-4 h-4 text-[#C98F7D]" />
+                          <span>Quản lý danh mục</span>
+                        </Link>
+                        <Link
+                          href="/admin/categories/new"
+                          onClick={() => setIsUserMenuOpen(false)}
+                          className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-[#463F3A] dark:text-[#EAE6DF] hover:bg-[#FAF9F6] dark:hover:bg-[#2E2A26] transition-colors"
+                        >
+                          <PlusCircle className="w-4 h-4 text-[#C98F7D]" />
+                          <span>Tạo danh mục</span>
+                        </Link>
+                      </>
                     )}
                     <Link
                       href="/profile"
@@ -359,13 +369,22 @@ export const Header: React.FC = () => {
             {currentUser ? (
               <>
                 {currentUser.role === "Admin" && (
-                  <Link
-                    href="/admin/categories/new"
-                    onClick={() => setIsMobileMenuOpen(false)}
-                    className="text-xs font-semibold py-2 px-3 rounded-lg hover:bg-white dark:hover:bg-[#24211E]"
-                  >
-                    Tạo danh mục
-                  </Link>
+                  <>
+                    <Link
+                      href="/admin/categories"
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className="text-xs font-semibold py-2 px-3 rounded-lg hover:bg-white dark:hover:bg-[#24211E]"
+                    >
+                      Quản lý danh mục
+                    </Link>
+                    <Link
+                      href="/admin/categories/new"
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className="text-xs font-semibold py-2 px-3 rounded-lg hover:bg-white dark:hover:bg-[#24211E]"
+                    >
+                      Tạo danh mục
+                    </Link>
+                  </>
                 )}
                 <Link
                   href="/profile"

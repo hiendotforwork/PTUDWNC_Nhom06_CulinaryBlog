@@ -105,6 +105,142 @@ public sealed class CategoryTests(CustomWebApplicationFactory factory)
         var missingNameResponse = await admin.PostAsJsonAsync(
             "/api/v1/categories", new { name = created.Name });
         missingNameResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        var deletedSlugSuffix = Guid.NewGuid().ToString("N")[..6];
+        var deletedName = $"Deleted category {deletedSlugSuffix}";
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.Categories.Add(new Category
+            {
+                Name = deletedName,
+                Slug = $"deleted-category-{deletedSlugSuffix}",
+                IsDeleted = true,
+                OrderIndex = 1
+            });
+            await db.SaveChangesAsync();
+            scope.ServiceProvider.GetRequiredService<IMemoryCache>().Remove("categories:all");
+        }
+
+        var recreatedResponse = await admin.PostAsJsonAsync(
+            "/api/v1/categories",
+            new { name = deletedName, description = (string?)null });
+        recreatedResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+        var recreated = await recreatedResponse.Content.ReadFromJsonAsync<CategoryDto>();
+        recreated!.Slug.Should().Be($"deleted-category-{deletedSlugSuffix}-2");
+    }
+
+    [Fact]
+    public async Task UpdateCategory_ChangesNameAndDescriptionButPreservesSlug()
+    {
+        var category = await CreateCategoryAsync();
+        using var anonymous = factory.CreateClient();
+        var unauthorizedResponse = await anonymous.PutAsJsonAsync(
+            $"/api/v1/categories/{category.Id}",
+            new { name = "Không được cập nhật", description = (string?)null });
+        unauthorizedResponse.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+
+        using var author = (await CreateAuthorClientAsync()).Client;
+        var forbiddenResponse = await author.PutAsJsonAsync(
+            $"/api/v1/categories/{category.Id}",
+            new { name = "Không được cập nhật", description = (string?)null });
+        forbiddenResponse.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        using var admin = await CreateAdminClientAsync();
+        await admin.GetAsync("/api/v1/categories");
+
+        var response = await admin.PutAsJsonAsync(
+            $"/api/v1/categories/{category.Id}",
+            new { name = "Tên mới " + Guid.NewGuid().ToString("N")[..6], description = "Mô tả mới" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var updated = await response.Content.ReadFromJsonAsync<CategoryDto>();
+        updated.Should().NotBeNull();
+        updated!.Name.Should().StartWith("Tên mới ");
+        updated.Description.Should().Be("Mô tả mới");
+        updated.Slug.Should().Be(category.Slug);
+
+        var detailResponse = await admin.GetAsync($"/api/v1/categories/{category.Slug}");
+        detailResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var detail = await detailResponse.Content.ReadFromJsonAsync<CategoryDetailDto>();
+        detail!.Category.Name.Should().Be(updated.Name);
+
+        var refreshedList = await admin.GetFromJsonAsync<CategoryDto[]>("/api/v1/categories");
+        refreshedList!.Single(item => item.Id == category.Id).Name.Should().Be(updated.Name);
+
+        var missingResponse = await admin.PutAsJsonAsync(
+            $"/api/v1/categories/{Guid.NewGuid()}",
+            new { name = "Tên hợp lệ", description = (string?)null });
+        missingResponse.StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        var invalidResponse = await admin.PutAsJsonAsync(
+            $"/api/v1/categories/{category.Id}",
+            new { name = "<b>Không hợp lệ</b>", description = (string?)null });
+        invalidResponse.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+    }
+
+    [Fact]
+    public async Task DeleteCategory_OnlyDeletesEmptyCategoriesAndRejectsCategoriesWithDraftRecipes()
+    {
+        var emptyCategory = await CreateCategoryAsync();
+        using var anonymous = factory.CreateClient();
+        (await anonymous.DeleteAsync($"/api/v1/categories/{emptyCategory.Id}"))
+            .StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+
+        using var author = (await CreateAuthorClientAsync()).Client;
+        (await author.DeleteAsync($"/api/v1/categories/{emptyCategory.Id}"))
+            .StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        using var admin = await CreateAdminClientAsync();
+        await admin.GetAsync("/api/v1/categories");
+
+        var deletedResponse = await admin.DeleteAsync($"/api/v1/categories/{emptyCategory.Id}");
+        deletedResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var deletedDetailResponse = await admin.GetAsync($"/api/v1/categories/{emptyCategory.Slug}");
+        deletedDetailResponse.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        var categoriesAfterDelete = await admin.GetFromJsonAsync<CategoryDto[]>("/api/v1/categories");
+        categoriesAfterDelete!.Should().NotContain(category => category.Id == emptyCategory.Id);
+
+        var missingResponse = await admin.DeleteAsync($"/api/v1/categories/{Guid.NewGuid()}");
+        missingResponse.StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        var categoryWithDraft = await CreateCategoryAsync();
+        var authorSession = await CreateAuthorClientAsync();
+        authorSession.Client.Dispose();
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.Recipes.Add(CreateRecipe(
+                categoryWithDraft.Id,
+                authorSession.UserId,
+                RecipeStatus.Draft,
+                "draft"));
+            await db.SaveChangesAsync();
+        }
+
+        var conflictResponse = await admin.DeleteAsync($"/api/v1/categories/{categoryWithDraft.Id}");
+        conflictResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await conflictResponse.Content.ReadAsStringAsync()).Should().Contain("1 công thức");
+
+        var categoryStillExists = await admin.GetAsync($"/api/v1/categories/{categoryWithDraft.Slug}");
+        categoryStillExists.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    private async Task<Category> CreateCategoryAsync()
+    {
+        var category = new Category
+        {
+            Name = "Danh mục test " + Guid.NewGuid().ToString("N")[..8],
+            Slug = "category-test-" + Guid.NewGuid().ToString("N"),
+            OrderIndex = 1
+        };
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        db.Categories.Add(category);
+        await db.SaveChangesAsync();
+        scope.ServiceProvider.GetRequiredService<IMemoryCache>().Remove("categories:all");
+        return category;
     }
 
     private async Task<(HttpClient Client, string UserId)> CreateAuthorClientAsync()
