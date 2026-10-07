@@ -18,6 +18,21 @@ services:
       timeout: 3s
       retries: 30
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8025:8025"
+
   api:
     build:
       context: .
@@ -26,8 +41,18 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
     environment:
       ASPNETCORE_ENVIRONMENT: Development
+      Redis__Connection: redis:6379
+      Email__SmtpHost: mailpit
+      Email__SmtpPort: "1025"
+      Email__From: noreply@culinary.local
+      Site__BaseUrl: http://localhost:3000
+      Site__PublicApiUrl: http://localhost:5058
       FileStorage__Provider: Local
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=culinary_blog;Username=culinary;Password=${POSTGRES_PASSWORD:-culinary_dev_password}

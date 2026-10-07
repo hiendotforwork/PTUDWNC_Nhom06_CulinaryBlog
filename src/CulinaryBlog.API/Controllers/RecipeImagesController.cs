@@ -17,7 +17,7 @@ using Microsoft.EntityFrameworkCore;
 [Route("api/v1/recipes/{recipeId:guid}/images")]
 // Class điều phối metadata/quyền của FR-RCP-008 và gọi cổng IFileStorageService do FR-FILE hiện thực.
 // Input: repository, Unit of Work, cổng lưu tệp và logger. Output: phản hồi HTTP cho thao tác ảnh.
-public sealed class RecipeImagesController(IRecipeCommandRepository repository, IRecipeUnitOfWork unitOfWork, IFileStorageService storage, IFileDeletionQueue deletions, ILogger<RecipeImagesController> logger) : ControllerBase
+public sealed class RecipeImagesController(IRecipeCommandRepository repository, IRecipeUnitOfWork unitOfWork, IFileStorageService storage, IFileDeletionQueue deletions, ILogger<RecipeImagesController> logger, IBackgroundTaskQueue backgroundTasks) : ControllerBase
 {
     private const long MaxFileSize = 5 * 1024 * 1024;
 
@@ -36,10 +36,13 @@ public sealed class RecipeImagesController(IRecipeCommandRepository repository, 
             stored = await storage.UploadAsync(stream, request.File.ContentType, Path.GetExtension(request.File.FileName), $"recipes/{recipeId}", ct);
         try
         {
+            await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
             var order = await repository.GetNextImageOrderAsync(recipeId, ct);
             var isPrimary = !await repository.HasPrimaryImageAsync(recipeId, ct);
             var image = new RecipeImage { RecipeId = recipeId, OriginalUrl = stored.Url, AltText = request.AltText?.Trim(), IsPrimary = isPrimary, OrderIndex = order };
             repository.AddImage(image); await unitOfWork.SaveChangesAsync(ct);
+            await backgroundTasks.ResizeAsync(image.Id, ct);
+            await transaction.CommitAsync(ct);
             return StatusCode(201, ImageResponse(image));
         }
         catch

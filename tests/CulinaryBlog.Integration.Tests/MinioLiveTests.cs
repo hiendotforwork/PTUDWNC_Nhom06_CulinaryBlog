@@ -21,8 +21,8 @@ public sealed class MinioLiveTests
     {
         var options = new MinioStorageOptions
         {
-            Endpoint = "localhost:9000",
-            PublicBaseUrl = "http://localhost:9000",
+            Endpoint = Environment.GetEnvironmentVariable("MINIO_TEST_ENDPOINT") ?? "localhost:9000",
+            PublicBaseUrl = Environment.GetEnvironmentVariable("MINIO_TEST_PUBLIC_URL") ?? "http://localhost:9000",
             AccessKey = Environment.GetEnvironmentVariable("MINIO_ROOT_USER") ?? throw new InvalidOperationException("Set MINIO_ROOT_USER."),
             SecretKey = Environment.GetEnvironmentVariable("MINIO_ROOT_PASSWORD") ?? throw new InvalidOperationException("Set MINIO_ROOT_PASSWORD.")
         };
