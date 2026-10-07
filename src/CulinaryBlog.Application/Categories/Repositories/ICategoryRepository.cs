@@ -14,11 +14,24 @@ public interface ICategoryRepository
         string? currentUserId,
         CancellationToken cancellationToken = default);
 
-    Task<bool> NameExistsAsync(string name, CancellationToken cancellationToken = default);
+    Task<Category?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
 
     Task<bool> SlugExistsAsync(string slug, CancellationToken cancellationToken = default);
 
+    Task<bool> NameExistsAsync(
+        string name,
+        Guid? excludingId = null,
+        CancellationToken cancellationToken = default);
+
+    Task<int> CountRecipesAsync(Guid categoryId, CancellationToken cancellationToken = default);
+
+    Task<int> CountPublishedRecipesAsync(Guid categoryId, CancellationToken cancellationToken = default);
+
     void Add(Category category);
+
+    void Update(Category category);
+
+    void SoftDelete(Category category);
 
     Task SaveChangesAsync(CancellationToken cancellationToken = default);
 }
