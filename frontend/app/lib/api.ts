@@ -16,7 +16,7 @@ import {
   RecipeStep,
   RegisterRequest,
 } from "./types";
-import { getToken, refreshAccessToken } from "./auth";
+import { getToken, refreshAccessToken, clearAuth } from "./auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5058";
 const API_ORIGIN = API_BASE.replace(/\/$/, "");
@@ -115,6 +115,13 @@ async function authFetch(url: string, init: RequestInit = {}, json = false): Pro
     if (refreshed) {
       const retryHeaders = authHeaders(json);
       res = await fetch(url, { ...init, headers: { ...retryHeaders, ...init.headers } });
+      // If still 401 after refresh, clear auth to prevent inconsistent state
+      if (res.status === 401) {
+        clearAuth();
+      }
+    } else {
+      // Refresh failed (token invalid/expired), clear auth
+      clearAuth();
     }
   }
 

@@ -28,6 +28,8 @@ import {
 } from "../lib/api";
 import * as auth from "../lib/auth";
 
+const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80";
+
 interface AppContextType {
   currentUser: User | null;
   setCurrentUser: (user: User | null) => void;
@@ -126,14 +128,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // Khởi tạo phiên đăng nhập sau hydration, làm mới token nếu sắp hết hạn, sau đó nạp công thức
   useEffect(() => {
     let cancelled = false;
-    const init = async () => {
-      const storedRefreshToken = auth.getRefreshToken();
-      if (storedRefreshToken && auth.isTokenExpiringSoon()) {
-        await auth.refreshAccessToken();
-      }
 
-      if (cancelled) return;
-
+    const syncUserFromStorage = () => {
       const stored = auth.getStoredUser();
       if (stored) {
         setCurrentUser({
@@ -141,19 +137,35 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           displayName: stored.displayName,
           userName: stored.userName,
           email: stored.email,
-          avatarUrl: stored.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
+          avatarUrl: stored.avatarUrl || DEFAULT_AVATAR,
           bio: stored.bio,
           role: (stored.roles?.includes("Author") ? "User" : (stored.roles?.[0] as "User" | "Admin")) || "User",
           createdAt: stored.createdAt || new Date().toISOString(),
         });
+      } else {
+        setCurrentUser(null);
+      }
+    };
+
+    const init = async () => {
+      const storedRefreshToken = auth.getRefreshToken();
+      if (storedRefreshToken && auth.isTokenExpiringSoon()) {
+        await auth.refreshAccessToken();
       }
 
+      if (cancelled) return;
+      syncUserFromStorage();
       await reloadRecipes();
     };
 
     init();
+
+    // Listen for auth state changes (login, logout, refresh)
+    const unsubscribe = auth.onAuthChange(syncUserFromStorage);
+
     return () => {
       cancelled = true;
+      unsubscribe();
     };
   }, []);
 

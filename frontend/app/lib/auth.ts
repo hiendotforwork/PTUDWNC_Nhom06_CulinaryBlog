@@ -5,6 +5,26 @@ const TOKEN_KEY = "auth_access_token";
 const REFRESH_KEY = "auth_refresh_token";
 const USER_KEY = "auth_user";
 
+// Auth state change listener
+type AuthChangeCallback = () => void;
+let _authChangeCallback: AuthChangeCallback | null = null;
+
+/**
+ * Register a callback to be called when auth state changes (login, logout, refresh)
+ */
+export function onAuthChange(callback: AuthChangeCallback): () => void {
+  _authChangeCallback = callback;
+  return () => {
+    _authChangeCallback = null;
+  };
+}
+
+function _notifyAuthChange(): void {
+  if (typeof window !== "undefined" && _authChangeCallback) {
+    _authChangeCallback();
+  }
+}
+
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem(TOKEN_KEY);
@@ -13,6 +33,7 @@ export function getToken(): string | null {
 export function setToken(token: string): void {
   if (typeof window === "undefined") return;
   localStorage.setItem(TOKEN_KEY, token);
+  _notifyAuthChange();
 }
 
 export function getRefreshToken(): string | null {
@@ -40,6 +61,7 @@ export function setStoredUser(user: AuthUser): void {
   // Add createdAt since backend doesn't return it
   const userWithTimestamp = { ...user, createdAt: new Date().toISOString() };
   localStorage.setItem(USER_KEY, JSON.stringify(userWithTimestamp));
+  _notifyAuthChange();
 }
 
 export function clearAuth(): void {
@@ -47,6 +69,7 @@ export function clearAuth(): void {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(REFRESH_KEY);
   localStorage.removeItem(USER_KEY);
+  _notifyAuthChange();
 }
 
 /**
@@ -107,7 +130,8 @@ export function getTokenExpiry(): Date | null {
 let refreshPromise: Promise<boolean> | null = null;
 
 /**
- * Refresh the access token using the stored refresh token
+ * Refresh the access token using the stored refresh token.
+ * Notifies auth change listeners on success or failure.
  */
 export async function refreshAccessToken(): Promise<boolean> {
   if (typeof window === "undefined") return false;
