@@ -1,4 +1,5 @@
 import { AuthUser } from "./types";
+import { refreshToken } from "./api";
 
 const TOKEN_KEY = "auth_access_token";
 const REFRESH_KEY = "auth_refresh_token";
@@ -46,4 +47,88 @@ export function clearAuth(): void {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(REFRESH_KEY);
   localStorage.removeItem(USER_KEY);
+}
+
+/**
+ * Decode JWT to get expiration time
+ * Note: This is a minimal decode, not validation (validation is server-side)
+ */
+function decodeJwt(token: string): { exp: number } | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const base64Url = token.split(".")[1];
+    if (!base64Url) return null;
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split("")
+        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+        .join("")
+    );
+    return JSON.parse(jsonPayload);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Check if the current access token is expiring soon (within 1 minute)
+ */
+export function isTokenExpiringSoon(): boolean {
+  const token = getToken();
+  if (!token) return true;
+
+  const decoded = decodeJwt(token);
+  if (!decoded || !decoded.exp) return true;
+
+  const currentTime = Math.floor(Date.now() / 1000);
+  const timeUntilExpiry = decoded.exp - currentTime;
+
+  // Return true if expires within 60 seconds
+  return timeUntilExpiry < 60;
+}
+
+/**
+ * Get token expiration timestamp
+ */
+export function getTokenExpiry(): Date | null {
+  const token = getToken();
+  if (!token) return null;
+
+  const decoded = decodeJwt(token);
+  if (!decoded || !decoded.exp) return null;
+
+  return new Date(decoded.exp * 1000);
+}
+
+/**
+ * Refresh the access token using the stored refresh token
+ */
+export async function refreshAccessToken(): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+
+  const refreshTokenValue = getRefreshToken();
+  if (!refreshTokenValue) {
+    clearAuth();
+    return false;
+  }
+
+  try {
+    const response = await refreshToken(refreshTokenValue);
+
+    // Update stored tokens
+    setToken(response.accessToken);
+    setRefreshToken(response.refreshToken);
+
+    // Update user if provided
+    if (response.user) {
+      setStoredUser(response.user);
+    }
+
+    return true;
+  } catch {
+    // Refresh failed, clear auth
+    clearAuth();
+    return false;
+  }
 }
