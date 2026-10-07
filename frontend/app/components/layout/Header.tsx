@@ -252,6 +252,16 @@ export const Header: React.FC = () => {
                     <p className="text-xs text-[#8A817C] truncate">{currentUser.email}</p>
                   </div>
                   <div className="py-2 flex flex-col gap-1">
+                    {currentUser.role === "Admin" && (
+                      <Link
+                        href="/admin/categories/new"
+                        onClick={() => setIsUserMenuOpen(false)}
+                        className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-[#463F3A] dark:text-[#EAE6DF] hover:bg-[#FAF9F6] dark:hover:bg-[#2E2A26] transition-colors"
+                      >
+                        <PlusCircle className="w-4 h-4 text-[#C98F7D]" />
+                        <span>Tạo danh mục</span>
+                      </Link>
+                    )}
                     <Link
                       href="/profile"
                       onClick={() => setIsUserMenuOpen(false)}
@@ -348,6 +358,15 @@ export const Header: React.FC = () => {
           <div className="pt-2 border-t border-[#DCD8D2]/60 dark:border-[#3D3934] flex flex-col gap-2">
             {currentUser ? (
               <>
+                {currentUser.role === "Admin" && (
+                  <Link
+                    href="/admin/categories/new"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="text-xs font-semibold py-2 px-3 rounded-lg hover:bg-white dark:hover:bg-[#24211E]"
+                  >
+                    Tạo danh mục
+                  </Link>
+                )}
                 <Link
                   href="/profile"
                   onClick={() => setIsMobileMenuOpen(false)}

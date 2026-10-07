@@ -4,14 +4,15 @@
 
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 import { Recipe, User, ToastMessage, ToastType, Category, AuthResponse, AuthUser } from "../lib/types";
-import { MOCK_CATEGORIES, MOCK_USERS } from "../lib/mockData";
 import {
   register as apiRegister,
   login as apiLogin,
   getRecipes,
   getRecipe,
+  getCategories as apiGetCategories,
+  createCategory as apiCreateCategory,
   createRecipe,
   updateRecipeApi,
   mutateRecipe,
@@ -33,6 +34,7 @@ interface AppContextType {
   setCurrentUser: (user: User | null) => void;
   recipes: Recipe[];
   categories: Category[];
+  addCategory: (data: { name: string; description: string }) => Promise<Category>;
   favorites: string[];
   toggleFavorite: (recipeId: string) => void;
   addRecipe: (recipeData: Omit<Recipe, "id" | "slug" | "createdAt" | "updatedAt" | "viewsCount" | "likesCount" | "author">) => Promise<Recipe>;
@@ -56,17 +58,6 @@ interface AppContextType {
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
-
-// Standalone ID generator functions outside of component render
-function generateToastId(): string {
-  return `toast-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-}
-
-
-function generateUserId(): string {
-  return `usr-${Date.now()}`;
-}
-
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   // Start with null; restore from localStorage via useEffect below
@@ -93,7 +84,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   }, []);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
 
-  const [categories, setCategories] = useState<Category[]>(MOCK_CATEGORIES);
+  const [categories, setCategories] = useState<Category[]>([
+    {
+      id: "all",
+      name: "Tất cả",
+      slug: "all",
+      description: "",
+      icon: "Utensils",
+      recipeCount: 0,
+    },
+  ]);
 
   const [favorites, setFavorites] = useState<string[]>(() => {
     if (typeof window === "undefined") return ["rcp-1", "rcp-2"];
@@ -107,9 +107,19 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
+  const removeToast = useCallback((id: string) => {
+    setToasts((previous) => previous.filter((toast) => toast.id !== id));
+  }, []);
+
+  const showToast = useCallback((type: ToastType, message: string, title?: string) => {
+    const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setToasts((previous) => [...previous, { id, type, message, title }]);
+    setTimeout(() => removeToast(id), 5000);
+  }, [removeToast]);
+
   // Chức năng: tải công thức công khai và công thức của người dùng rồi hợp nhất kết quả.
   // Input: không có. Output: cập nhật state recipes và categories; phiên hết hạn được xóa an toàn.
-  const reloadRecipes = async () => {
+  const reloadRecipes = useCallback(async () => {
     try {
       const publicRecipes = await getRecipes(false);
       let ownRecipes: Recipe[] = [];
@@ -131,8 +141,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
       const merged = [...ownRecipes, ...publicRecipes.filter((recipe) => !ownRecipes.some((own) => own.id === recipe.id))];
       setRecipes(merged);
-      const unique = new Map(merged.map((recipe) => [recipe.category.id, recipe.category]));
-      setCategories([{ id: "all", name: "Tất cả", slug: "all", description: "", icon: "🍽️", recipeCount: merged.length }, ...unique.values()]);
     } catch (error: unknown) {
       const message = error instanceof Error
         ? error.message
@@ -141,24 +149,39 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           : "Không thể tải danh sách công thức từ backend.";
       showToast("error", message);
     }
-  };
+  }, [showToast]);
+
+  const reloadCategories = useCallback(async () => {
+    try {
+      setCategories(await apiGetCategories());
+    } catch (error: unknown) {
+      const message = error instanceof Error
+        ? error.message
+        : (typeof error === "object" && error !== null && "message" in error && typeof (error as { message: unknown }).message === "string")
+          ? (error as { message: string }).message
+          : "Không thể tải danh sách danh mục từ backend.";
+      showToast("error", message);
+    }
+  }, [showToast]);
+
   useEffect(() => {
     const timer = window.setTimeout(() => void reloadRecipes(), 0);
-    return () => window.clearTimeout(timer);
-  }, []);
+    const categoryTimer = window.setTimeout(() => void reloadCategories(), 0);
+    return () => {
+      window.clearTimeout(timer);
+      window.clearTimeout(categoryTimer);
+    };
+  }, [reloadCategories, reloadRecipes]);
 
-  const removeToast = (id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  };
-
-  const showToast = (type: ToastType, message: string, title?: string) => {
-    const id = generateToastId();
-    const newToast: ToastMessage = { id, type, message, title };
-    setToasts((prev) => [...prev, newToast]);
-
-    setTimeout(() => {
-      removeToast(id);
-    }, 5000);
+  const addCategory = async (data: { name: string; description: string }): Promise<Category> => {
+    const category = await apiCreateCategory(data);
+    setCategories((previous) => {
+      const all = previous.find((item) => item.slug === "all");
+      const items = [...previous.filter((item) => item.slug !== "all" && item.id !== category.id), category]
+        .sort((left, right) => left.name.localeCompare(right.name, "vi"));
+      return all ? [all, ...items] : items;
+    });
+    return category;
   };
 
   const toggleFavorite = (recipeId: string) => {
@@ -536,6 +559,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         setCurrentUser,
         recipes,
         categories,
+        addCategory,
         favorites,
         toggleFavorite,
         addRecipe,

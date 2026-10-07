@@ -7,6 +7,7 @@
 import {
   ApiError,
   AuthResponse,
+  Category,
   DifficultyLevel,
   Ingredient,
   LoginRequest,
@@ -39,6 +40,38 @@ type ApiRecipe = {
   nutrition?: ApiNutrition; createdAt: string; updatedAt?: string; rowVersion?: string;
 };
 type RecipePage = { items: ApiRecipe[] };
+type ApiCategory = {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+  recipeCount: number;
+};
+type ApiCategoryRecipe = {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  prepTime: number;
+  cookTime: number;
+  servings: number;
+  difficulty: string;
+  categoryId: string;
+  categoryName: string;
+  createdAt: string;
+};
+export type CategoryDetailResponse = {
+  category: ApiCategory;
+  recipes: {
+    items: ApiCategoryRecipe[];
+    totalCount: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+  };
+};
 export type RecipeMutationResponse = { id: string; slug: string; status: number; rowVersion: string };
 export type IngredientResponse = ApiIngredient & { orderIndex: number; rowVersion: string };
 export type StepResponse = ApiStep & { rowVersion: string };
@@ -175,6 +208,104 @@ export function mapRecipe(raw: ApiRecipe): Recipe {
 // Input: mine - true nếu chỉ lấy công thức của tôi. Output: mảng Recipe.
 // Chức năng: lấy chi tiết một công thức theo slug.
 // Input: slug - định danh trên URL. Output: một Recipe đầy đủ.
+function mapCategory(raw: ApiCategory): Category {
+  return {
+    id: raw.id,
+    name: raw.name,
+    slug: raw.slug,
+    description: raw.description || "",
+    icon: "Utensils",
+    recipeCount: raw.recipeCount,
+  };
+}
+
+function mapCategoryRecipe(raw: ApiCategoryRecipe): Recipe {
+  const difficultyByName: Record<string, DifficultyLevel> = {
+    easy: "Easy",
+    medium: "Medium",
+    hard: "Hard",
+  };
+  const recipeDifficulty = difficultyByName[raw.difficulty.toLowerCase()] || "Easy";
+
+  return {
+    id: raw.id,
+    title: raw.title,
+    slug: raw.slug,
+    description: raw.description,
+    instructions: "",
+    prepTime: raw.prepTime,
+    cookTime: raw.cookTime,
+    servings: raw.servings,
+    difficultyLevel: recipeDifficulty,
+    status: "Published",
+    images: [],
+    ingredients: [],
+    steps: [],
+    author: {
+      id: "",
+      displayName: "Cộng đồng Culinary Blog",
+      userName: "",
+      email: "",
+      avatarUrl: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
+      role: "User",
+      createdAt: raw.createdAt,
+    },
+    category: {
+      id: raw.categoryId,
+      name: raw.categoryName,
+      slug: "",
+      description: "",
+      icon: "Utensils",
+      recipeCount: 0,
+    },
+    createdAt: raw.createdAt,
+    updatedAt: raw.createdAt,
+    viewsCount: 0,
+    likesCount: 0,
+  };
+}
+
+export async function getCategories(): Promise<Category[]> {
+  const res = await fetch(`${API_BASE}/api/v1/categories`, { cache: "no-store" });
+  const categories = await handleResponse<ApiCategory[]>(res);
+  return [
+    {
+      id: "all",
+      name: "Tất cả",
+      slug: "all",
+      description: "",
+      icon: "Utensils",
+      recipeCount: categories.reduce((total, category) => total + category.recipeCount, 0),
+    },
+    ...categories.map(mapCategory),
+  ];
+}
+
+export async function getCategoryDetail(slug: string, page = 1, pageSize = 12): Promise<{
+  category: Category;
+  recipes: Omit<CategoryDetailResponse["recipes"], "items"> & { items: Recipe[] };
+}> {
+  const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+  const res = await fetch(
+    `${API_BASE}/api/v1/categories/${encodeURIComponent(slug)}?${query}`,
+    { headers: authHeaders(), cache: "no-store" },
+  );
+  const detail = await handleResponse<CategoryDetailResponse>(res);
+  return {
+    category: mapCategory(detail.category),
+    recipes: { ...detail.recipes, items: detail.recipes.items.map(mapCategoryRecipe) },
+  };
+}
+
+export async function createCategory(data: { name: string; description: string }): Promise<Category> {
+  const res = await fetch(`${API_BASE}/api/v1/categories`, {
+    method: "POST",
+    headers: authHeaders(true),
+    body: JSON.stringify(data),
+  });
+  return mapCategory(await handleResponse<ApiCategory>(res));
+}
+
 export async function getRecipes(mine = false): Promise<Recipe[]> {
   const res = await fetch(`${API_BASE}/api/v1/recipes?page=1&pageSize=50${mine ? "&mine=true" : ""}`, {
     headers: mine ? authHeaders() : undefined,

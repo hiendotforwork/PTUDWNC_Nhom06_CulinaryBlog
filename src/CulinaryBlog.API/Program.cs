@@ -15,10 +15,13 @@ using CulinaryBlog.Application.Commands.Auth.Register;
 using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Application.Recipes.Queries;
 using CulinaryBlog.Application.Recipes.Repositories;
+using CulinaryBlog.Application.Categories.Queries;
+using CulinaryBlog.Application.Categories.Repositories;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Infrastructure.Data;
 using CulinaryBlog.Infrastructure.Persistence;
 using CulinaryBlog.Infrastructure.Recipes;
+using CulinaryBlog.Infrastructure.Categories;
 using CulinaryBlog.Infrastructure.Services;
 using CulinaryBlog.Infrastructure.Services.Email;
 using FluentValidation;
@@ -80,10 +83,12 @@ builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<IRecipeRepository, RecipeRepository>();
 builder.Services.AddScoped<IRecipeCommandRepository, RecipeCommandRepository>();
 builder.Services.AddScoped<IRecipeUnitOfWork, RecipeUnitOfWork>();
+builder.Services.AddScoped<ICategoryRepository, CategoryRepository>();
 builder.Services.AddFileStorage(builder.Configuration, builder.Environment);
 builder.Services.AddMediatR(configuration =>
     configuration.RegisterServicesFromAssembly(typeof(GetRecipesQuery).Assembly));
 builder.Services.AddValidatorsFromAssembly(typeof(RegisterCommandValidator).Assembly);
+builder.Services.AddMemoryCache();
 
 var jwtSecret = builder.Configuration["Jwt:Secret"]
     ?? builder.Configuration["Jwt:AccessTokenSecret"]
@@ -284,4 +289,3 @@ static int ParseIntWithOut(string? value, int defaultValue, string fieldName, ou
 }
 
 public partial class Program { }
-
