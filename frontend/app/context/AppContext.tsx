@@ -74,7 +74,28 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   // Restore auth state after hydration so server and browser render the same first frame.
   useEffect(() => {
-    const timer = window.setTimeout(() => {
+    const timer = window.setTimeout(async () => {
+      const storedRefreshToken = auth.getRefreshToken();
+      if (storedRefreshToken && auth.isTokenExpiringSoon()) {
+        const success = await auth.refreshAccessToken();
+        if (success) {
+          const user = auth.getStoredUser();
+          if (user) {
+            setCurrentUser({
+              id: user.id,
+              displayName: user.displayName,
+              userName: user.userName,
+              email: user.email,
+              avatarUrl: user.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
+              bio: user.bio,
+              role: (user.roles?.includes("Author") ? "User" : (user.roles?.[0] as "User" | "Admin")) || "User",
+              createdAt: user.createdAt || new Date().toISOString(),
+            });
+            return;
+          }
+        }
+      }
+
       const stored = auth.getStoredUser();
       if (stored) {
         setCurrentUser({
