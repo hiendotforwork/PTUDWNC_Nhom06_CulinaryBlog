@@ -9,6 +9,7 @@ import { Recipe, User, ToastMessage, ToastType, Category, AuthResponse, AuthUser
 import {
   register as apiRegister,
   login as apiLogin,
+  logout as apiLogout,
   getRecipes,
   getRecipe,
   getCategories as apiGetCategories,
@@ -56,7 +57,7 @@ interface AppContextType {
     user: AuthUser
   ) => void;
   register: (data: { displayName: string; email: string; userName: string; password?: string }) => Promise<boolean>;
-  logout: () => void;
+  logout: () => Promise<void>;
   updateProfile: (data: { displayName?: string; bio?: string; avatarUrl?: string }) => void;
   toasts: ToastMessage[];
   showToast: (type: ToastType, message: string, title?: string) => void;
@@ -552,10 +553,19 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const logout = () => {
-    auth.clearAuth();
-    setCurrentUser(null);
-    showToast("info", "Đã đăng xuất");
+  const logout = async () => {
+    try {
+      const refreshToken = auth.getRefreshToken();
+      if (refreshToken) {
+        await apiLogout(refreshToken);
+      }
+    } catch (error) {
+      console.warn("Lỗi khi thu hồi refresh token từ máy chủ:", error);
+    } finally {
+      auth.clearAuth();
+      setCurrentUser(null);
+      showToast("info", "Đã đăng xuất");
+    }
   };
 
   const loginWithExternalToken = (

@@ -2,10 +2,18 @@ namespace CulinaryBlog.Integration.Tests;
 
 using System.IdentityModel.Tokens.Jwt;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Claims;
+using System.Text;
 using System.Text.Json;
 using CulinaryBlog.Application.DTOs.Auth;
+using CulinaryBlog.Domain.Entities;
+using CulinaryBlog.Infrastructure.Data;
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 public class AuthControllerTests : IClassFixture<CustomWebApplicationFactory>
@@ -291,6 +299,171 @@ public class AuthControllerTests : IClassFixture<CustomWebApplicationFactory>
     }
 
     [Fact]
+    public async Task Logout_WithActiveRefreshToken_Returns204AndRevokesToken()
+    {
+        // Arrange
+        var registerRequest = CreateUniqueRegisterRequest("logout_active");
+        var registerResponse = await _client.PostAsJsonAsync("/api/v1/auth/register", registerRequest);
+        registerResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var authContent = await registerResponse.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions);
+        authContent.Should().NotBeNull();
+        var rawRefreshToken = authContent!.RefreshToken;
+        var tokenHash = RefreshToken.HashToken(rawRefreshToken);
+
+        var logoutRequest = new LogoutRequest(rawRefreshToken);
+
+        // Act - POST without Authorization header
+        var clientWithoutAuth = _factory.CreateClient();
+        clientWithoutAuth.DefaultRequestHeaders.Authorization = null;
+        var response = await clientWithoutAuth.PostAsJsonAsync("/api/v1/auth/logout", logoutRequest);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var persistedToken = await db.RefreshTokens.FirstOrDefaultAsync(t => t.TokenHash == tokenHash);
+        persistedToken.Should().NotBeNull();
+        persistedToken!.RevokedAt.Should().NotBeNull();
+        persistedToken.IsRevoked.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Logout_WithUnknownRefreshToken_Returns204()
+    {
+        // Arrange
+        var logoutRequest = new LogoutRequest("non-existent-random-token-123");
+
+        // Act
+        var clientWithoutAuth = _factory.CreateClient();
+        clientWithoutAuth.DefaultRequestHeaders.Authorization = null;
+        var response = await clientWithoutAuth.PostAsJsonAsync("/api/v1/auth/logout", logoutRequest);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        var content = await response.Content.ReadAsStringAsync();
+        content.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Logout_WithExpiredOrRevokedRefreshToken_Returns204()
+    {
+        // Arrange - register user to attach tokens to
+        var registerRequest = CreateUniqueRegisterRequest("logout_exp_rev");
+        var registerResponse = await _client.PostAsJsonAsync("/api/v1/auth/register", registerRequest);
+        registerResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+        var authContent = await registerResponse.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions);
+        var userId = authContent!.User.Id;
+
+        var expiredRawToken = "expired-raw-token-" + Guid.NewGuid().ToString("N");
+        var expiredTokenHash = RefreshToken.HashToken(expiredRawToken);
+        var expiredToken = RefreshToken.Create(userId, expiredRawToken, "127.0.0.1", -2);
+
+        var revokedRawToken = "revoked-raw-token-" + Guid.NewGuid().ToString("N");
+        var revokedTokenHash = RefreshToken.HashToken(revokedRawToken);
+        var revokedToken = RefreshToken.Create(userId, revokedRawToken, "127.0.0.1", 7);
+        var originalRevokedAt = DateTime.UtcNow.AddHours(-1);
+        revokedToken.RevokedAt = originalRevokedAt;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.RefreshTokens.AddRange(expiredToken, revokedToken);
+            await db.SaveChangesAsync();
+        }
+
+        var clientWithoutAuth = _factory.CreateClient();
+        clientWithoutAuth.DefaultRequestHeaders.Authorization = null;
+
+        // Act 1: expired token
+        var expiredResponse = await clientWithoutAuth.PostAsJsonAsync("/api/v1/auth/logout", new LogoutRequest(expiredRawToken));
+
+        // Act 2: revoked token
+        var revokedResponse = await clientWithoutAuth.PostAsJsonAsync("/api/v1/auth/logout", new LogoutRequest(revokedRawToken));
+
+        // Assert
+        expiredResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        revokedResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var dbExpired = await db.RefreshTokens.FirstOrDefaultAsync(t => t.TokenHash == expiredTokenHash);
+            dbExpired.Should().NotBeNull();
+            dbExpired!.RevokedAt.Should().BeNull(); // Was not modified to revoked
+
+            var dbRevoked = await db.RefreshTokens.FirstOrDefaultAsync(t => t.TokenHash == revokedTokenHash);
+            dbRevoked.Should().NotBeNull();
+            dbRevoked!.RevokedAt.Should().BeCloseTo(originalRevokedAt, TimeSpan.FromSeconds(1));
+        }
+    }
+
+    [Fact]
+    public async Task Logout_WithoutBody_Returns204()
+    {
+        var response = await _factory.CreateClient().PostAsync("/api/v1/auth/logout", content: null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await response.Content.ReadAsStringAsync()).Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"refreshToken\":null}")]
+    [InlineData("{\"refreshToken\":\"\"}")]
+    [InlineData("{\"refreshToken\":\"   \"}")]
+    public async Task Logout_WithMissingNullOrBlankRefreshToken_Returns204(string payload)
+    {
+        var response = await _factory.CreateClient().PostAsync(
+            "/api/v1/auth/logout",
+            new StringContent(payload, Encoding.UTF8, "application/json"));
+
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await response.Content.ReadAsStringAsync()).Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("expired")]
+    [InlineData("malformed")]
+    public async Task Logout_WithInvalidAuthorizationHeader_Returns204AndRevokesToken(string authorizationKind)
+    {
+        var registerResponse = await _client.PostAsJsonAsync(
+            "/api/v1/auth/register",
+            CreateUniqueRegisterRequest("logout_invalid_auth"));
+        var auth = await registerResponse.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions);
+        var rawRefreshToken = auth!.RefreshToken;
+        var tokenHash = RefreshToken.HashToken(rawRefreshToken);
+        using var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            authorizationKind == "expired" ? CreateExpiredJwt() : "malformed");
+
+        var response = await client.PostAsJsonAsync("/api/v1/auth/logout", new LogoutRequest(rawRefreshToken));
+
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await response.Content.ReadAsStringAsync()).Should().BeEmpty();
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        (await db.RefreshTokens.FirstAsync(token => token.TokenHash == tokenHash)).RevokedAt.Should().NotBeNull();
+    }
+
+    private static string CreateExpiredJwt()
+    {
+        var token = new JwtSecurityToken(
+            issuer: "CulinaryBlog",
+            audience: "CulinaryBlogApp",
+            claims: [new Claim(JwtRegisteredClaimNames.Sub, "expired-user")],
+            notBefore: DateTime.UtcNow.AddHours(-2),
+            expires: DateTime.UtcNow.AddHours(-1),
+            signingCredentials: new SigningCredentials(
+                new SymmetricSecurityKey(Encoding.UTF8.GetBytes("CulinaryBlogDefaultSuperSecretKeyForDevelopmentAndTestingPurposesOnly32Chars!")),
+                SecurityAlgorithms.HmacSha256));
+
+        return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    [Fact]
     public async Task Refresh_ValidToken_ReturnsNewTokens()
     {
         // Arrange - register user to get initial tokens
@@ -343,3 +516,4 @@ public class AuthControllerTests : IClassFixture<CustomWebApplicationFactory>
         secondRefresh.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 }
+

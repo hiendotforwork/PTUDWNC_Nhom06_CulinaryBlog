@@ -2,11 +2,13 @@ namespace CulinaryBlog.API.Controllers;
 
 using CulinaryBlog.Application.Commands.Auth.Login;
 using CulinaryBlog.Application.Commands.Auth.Register;
+using CulinaryBlog.Application.Commands.Auth.Logout;
 using CulinaryBlog.Application.Commands.Auth.RefreshToken;
 using CulinaryBlog.Application.DTOs.Auth;
 using CulinaryBlog.Application.Commands.Auth.GoogleLogin;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using FluentValidation;
 using MediatR;
@@ -182,5 +184,14 @@ public class AuthController : ControllerBase
             var frontendBase = _configuration["FrontendUrl"] ?? "http://localhost:3000";
             return Redirect($"{frontendBase}/login?error={Uri.EscapeDataString("Đăng nhập Google thất bại. Vui lòng thử lại.")}");
         }
+    }
+
+    [HttpPost("logout")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> Logout([FromBody] LogoutRequest? request, CancellationToken cancellationToken)
+    {
+        await _mediator.Send(new LogoutCommand(request?.RefreshToken), cancellationToken);
+        return NoContent();
     }
 }
