@@ -4,14 +4,17 @@
 
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 import { Recipe, User, ToastMessage, ToastType, Category, AuthResponse, AuthUser } from "../lib/types";
-import { MOCK_CATEGORIES, MOCK_USERS } from "../lib/mockData";
 import {
   register as apiRegister,
   login as apiLogin,
   getRecipes,
   getRecipe,
+  getCategories as apiGetCategories,
+  createCategory as apiCreateCategory,
+  updateCategory as apiUpdateCategory,
+  deleteCategory as apiDeleteCategory,
   createRecipe,
   updateRecipeApi,
   mutateRecipe,
@@ -35,6 +38,9 @@ interface AppContextType {
   setCurrentUser: (user: User | null) => void;
   recipes: Recipe[];
   categories: Category[];
+  addCategory: (data: { name: string; description: string }) => Promise<Category>;
+  updateCategory: (id: string, data: { name: string; description: string }) => Promise<Category>;
+  deleteCategory: (id: string) => Promise<void>;
   favorites: string[];
   toggleFavorite: (recipeId: string) => void;
   addRecipe: (recipeData: Omit<Recipe, "id" | "slug" | "createdAt" | "updatedAt" | "viewsCount" | "likesCount" | "author">) => Promise<Recipe>;
@@ -59,23 +65,22 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-// Standalone ID generator functions outside of component render
-function generateToastId(): string {
-  return `toast-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-}
-
-
-function generateUserId(): string {
-  return `usr-${Date.now()}`;
-}
-
-
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   // Start with null; restore from localStorage via useEffect below
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   const [recipes, setRecipes] = useState<Recipe[]>([]);
-  const [categories, setCategories] = useState<Category[]>(MOCK_CATEGORIES);
+
+  const [categories, setCategories] = useState<Category[]>([
+    {
+      id: "all",
+      name: "Tất cả",
+      slug: "all",
+      description: "",
+      icon: "Utensils",
+      recipeCount: 0,
+    },
+  ]);
 
   const [favorites, setFavorites] = useState<string[]>(() => {
     if (typeof window === "undefined") return ["rcp-1", "rcp-2"];
@@ -89,9 +94,19 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
+  const removeToast = useCallback((id: string) => {
+    setToasts((previous) => previous.filter((toast) => toast.id !== id));
+  }, []);
+
+  const showToast = useCallback((type: ToastType, message: string, title?: string) => {
+    const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setToasts((previous) => [...previous, { id, type, message, title }]);
+    setTimeout(() => removeToast(id), 5000);
+  }, [removeToast]);
+
   // Chức năng: tải công thức công khai và công thức của người dùng rồi hợp nhất kết quả.
   // Input: không có. Output: cập nhật state recipes và categories; phiên hết hạn được xóa an toàn.
-  const reloadRecipes = async () => {
+  const reloadRecipes = useCallback(async () => {
     try {
       const publicRecipes = await getRecipes(false);
       let ownRecipes: Recipe[] = [];
@@ -113,8 +128,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
       const merged = [...ownRecipes, ...publicRecipes.filter((recipe) => !ownRecipes.some((own) => own.id === recipe.id))];
       setRecipes(merged);
-      const unique = new Map(merged.map((recipe) => [recipe.category.id, recipe.category]));
-      setCategories([{ id: "all", name: "Tất cả", slug: "all", description: "", icon: "🍽️", recipeCount: merged.length }, ...unique.values()]);
     } catch (error: unknown) {
       const message = error instanceof Error
         ? error.message
@@ -123,9 +136,22 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           : "Không thể tải danh sách công thức từ backend.";
       showToast("error", message);
     }
-  };
+  }, [showToast]);
 
-  // Khởi tạo phiên đăng nhập sau hydration, làm mới token nếu sắp hết hạn, sau đó nạp công thức
+  const reloadCategories = useCallback(async () => {
+    try {
+      setCategories(await apiGetCategories());
+    } catch (error: unknown) {
+      const message = error instanceof Error
+        ? error.message
+        : (typeof error === "object" && error !== null && "message" in error && typeof (error as { message: unknown }).message === "string")
+          ? (error as { message: string }).message
+          : "Không thể tải danh sách danh mục từ backend.";
+      showToast("error", message);
+    }
+  }, [showToast]);
+
+  // Khởi tạo phiên đăng nhập sau hydration, làm mới token nếu sắp hết hạn, sau đó nạp công thức và danh mục
   useEffect(() => {
     let cancelled = false;
 
@@ -139,7 +165,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           email: stored.email,
           avatarUrl: stored.avatarUrl || DEFAULT_AVATAR,
           bio: stored.bio,
-          role: (stored.roles?.includes("Author") ? "User" : (stored.roles?.[0] as "User" | "Admin")) || "User",
+          role: stored.roles?.includes("Admin") ? "Admin" : "User",
           createdAt: stored.createdAt || new Date().toISOString(),
         });
       } else {
@@ -155,7 +181,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
       if (cancelled) return;
       syncUserFromStorage();
-      await reloadRecipes();
+      await Promise.all([reloadRecipes(), reloadCategories()]);
     };
 
     init();
@@ -167,20 +193,38 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       cancelled = true;
       unsubscribe();
     };
-  }, []);
+  }, [reloadCategories, reloadRecipes]);
 
-  const removeToast = (id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
+  const addCategory = async (data: { name: string; description: string }): Promise<Category> => {
+    const category = await apiCreateCategory(data);
+    setCategories((previous) => {
+      const all = previous.find((item) => item.slug === "all");
+      const items = [...previous.filter((item) => item.slug !== "all" && item.id !== category.id), category]
+        .sort((left, right) => left.name.localeCompare(right.name, "vi"));
+      return all ? [all, ...items] : items;
+    });
+    return category;
   };
 
-  const showToast = (type: ToastType, message: string, title?: string) => {
-    const id = generateToastId();
-    const newToast: ToastMessage = { id, type, message, title };
-    setToasts((prev) => [...prev, newToast]);
+  const updateCategory = async (
+    id: string,
+    data: { name: string; description: string },
+  ): Promise<Category> => {
+    const updated = await apiUpdateCategory(id, data);
+    setCategories((previous) => {
+      const all = previous.find((item) => item.slug === "all");
+      const items = previous
+        .filter((item) => item.slug !== "all" && item.id !== updated.id)
+        .concat(updated)
+        .sort((left, right) => left.name.localeCompare(right.name, "vi"));
+      return all ? [all, ...items] : items;
+    });
+    return updated;
+  };
 
-    setTimeout(() => {
-      removeToast(id);
-    }, 5000);
+  const deleteCategory = async (id: string): Promise<void> => {
+    await apiDeleteCategory(id);
+    setCategories((previous) => previous.filter((category) => category.id !== id));
   };
 
   const toggleFavorite = (recipeId: string) => {
@@ -369,7 +413,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         email: response.user.email,
         avatarUrl: response.user.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
         bio: response.user.bio,
-        role: (response.user.roles?.includes("Author") ? "User" : (response.user.roles?.[0] as "User" | "Admin")) || "User",
+        role: response.user.roles?.includes("Admin") ? "Admin" : "User",
         createdAt: new Date().toISOString(),
       };
 
@@ -460,7 +504,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         email: response.user.email,
         avatarUrl: response.user.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
         bio: response.user.bio,
-        role: (response.user.roles?.includes("Author") ? "User" : (response.user.roles?.[0] as "User" | "Admin")) || "User",
+        role: response.user.roles?.includes("Admin") ? "Admin" : "User",
         createdAt: new Date().toISOString(),
       };
 
@@ -531,7 +575,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       email: authUser.email,
       avatarUrl: authUser.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
       bio: authUser.bio,
-      role: (authUser.roles?.includes("Author") ? "User" : (authUser.roles?.[0] as "User" | "Admin")) || "User",
+      role: authUser.roles?.includes("Admin") ? "Admin" : "User",
       createdAt: new Date().toISOString(),
     };
 
@@ -558,6 +602,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         setCurrentUser,
         recipes,
         categories,
+        addCategory,
+        updateCategory,
+        deleteCategory,
         favorites,
         toggleFavorite,
         addRecipe,

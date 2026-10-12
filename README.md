@@ -29,6 +29,8 @@ Hệ thống blog ẩm thực cho phép người dùng khám phá, tìm kiếm v
   - **FR-SRCH-002/003/004:** Lọc, Sắp xếp và Phân trang (Paginated + Filtered + Sorted).
 - **FR-FILE (Quản lý tệp tin):**
   - Tích hợp MinIO S3-compatible để Upload/Delete tệp tin (ảnh công thức, avatar).
+- **FR-JOB:** Module Background Jobs
+- **FR-OBS:** Module Quan sát Hệ thống
 
 **3. Ngô Văn Chương (2312588)**
 - **FR-RCP (Quản lý công thức nấu ăn):**
@@ -138,3 +140,7 @@ Frontend sẽ chạy tại `http://localhost:3000`
 ## Tài liệu tham khảo
 
 - 📖 **[Documentation Index & Reading Guide Module FR-AUTH](./docs/README.md)** (Mục lục điều hướng và thứ tự đọc tài liệu)
+
+## FR-JOB / FR-OBS
+
+Hướng dẫn Docker và các case kiểm thử: [triển khai](docs/specs/fr-job-obs/README.md) và [báo cáo test](docs/specs/fr-job-obs/TEST_REPORT.md).

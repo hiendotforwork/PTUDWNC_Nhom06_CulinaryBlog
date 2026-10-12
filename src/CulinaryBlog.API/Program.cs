@@ -2,6 +2,7 @@
 // Khi chạy bằng Docker, ứng dụng tự áp dụng migration, seed Lab 2 và phục vụ ảnh từ Docker Volume.
 
 using MediatR;
+using Serilog;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authentication.OAuth;
@@ -15,10 +16,13 @@ using CulinaryBlog.Application.Commands.Auth.Register;
 using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Application.Recipes.Queries;
 using CulinaryBlog.Application.Recipes.Repositories;
+using CulinaryBlog.Application.Categories.Queries;
+using CulinaryBlog.Application.Categories.Repositories;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Infrastructure.Data;
 using CulinaryBlog.Infrastructure.Persistence;
 using CulinaryBlog.Infrastructure.Recipes;
+using CulinaryBlog.Infrastructure.Categories;
 using CulinaryBlog.Infrastructure.Services;
 using CulinaryBlog.Infrastructure.Services.Email;
 using FluentValidation;
@@ -39,7 +43,7 @@ if (labCommand is not null)
 {
     if (labCommand is not ("--lab2-migrate" or "--lab2-seed" or "--lab2-verify"))
         throw new ArgumentException("Unknown Lab 2 command.");
-    var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(connectionString).Options;
+    var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(connectionString, postgresOptions => postgresOptions.MigrationsHistoryTable("__EFMigrationsHistory", "public")).Options;
     await using var db = new ApplicationDbContext(options);
     if (labCommand == "--lab2-migrate")
     {
@@ -53,7 +57,7 @@ if (labCommand is not null)
 }
 if (!isTesting)
 {
-    builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseNpgsql(connectionString));
+    builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseNpgsql(connectionString, postgresOptions => postgresOptions.MigrationsHistoryTable("__EFMigrationsHistory", "public")));
 
 }
 
@@ -80,10 +84,12 @@ builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<IRecipeRepository, RecipeRepository>();
 builder.Services.AddScoped<IRecipeCommandRepository, RecipeCommandRepository>();
 builder.Services.AddScoped<IRecipeUnitOfWork, RecipeUnitOfWork>();
+builder.Services.AddScoped<ICategoryRepository, CategoryRepository>();
 builder.Services.AddFileStorage(builder.Configuration, builder.Environment);
 builder.Services.AddMediatR(configuration =>
     configuration.RegisterServicesFromAssembly(typeof(GetRecipesQuery).Assembly));
 builder.Services.AddValidatorsFromAssembly(typeof(RegisterCommandValidator).Assembly);
+builder.Services.AddMemoryCache();
 
 var jwtSecret = builder.Configuration["Jwt:Secret"]
     ?? builder.Configuration["Jwt:AccessTokenSecret"]
@@ -162,10 +168,13 @@ builder.Services.AddControllers().ConfigureApiBehaviorOptions(options =>
 });
 builder.Services.AddOpenApi();
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
-    policy.WithOrigins("http://localhost:3000", "http://localhost:3001")
+    policy.WithOrigins("http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000", "http://127.0.0.1:3001")
         .AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
 
+builder.AddRuntimeModules();
+
 var app = builder.Build();
+app.UseMiddleware<CorrelationLoggingMiddleware>();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
 if (!isTesting && builder.Configuration.GetValue("Database:AutoMigrate", false))
@@ -224,7 +233,8 @@ app.MapGet("/api/v1/recipes/search", async (
 .WithName("SearchRecipes");
 
 app.MapControllers();
-app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
+await app.InitializeLocalBucketAsync();
+app.MapRuntimeModules();
 app.Run();
 
 // Ghi nhận migration nền mới khi Docker Volume đã có đủ bảng từ migration cũ.
@@ -232,7 +242,8 @@ app.Run();
 static async Task RegisterExistingDockerDatabaseAsync(ApplicationDbContext database)
 {
     await database.Database.ExecuteSqlRawAsync("""
-        CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" (
+        CREATE SCHEMA IF NOT EXISTS culinary;
+        CREATE TABLE IF NOT EXISTS public."__EFMigrationsHistory" (
             "MigrationId" character varying(150) NOT NULL,
             "ProductVersion" character varying(32) NOT NULL,
             CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY ("MigrationId")
@@ -245,24 +256,28 @@ static async Task RegisterExistingDockerDatabaseAsync(ApplicationDbContext datab
                 'AspNetRoles', 'AspNetUsers', 'AspNetRoleClaims', 'AspNetUserClaims',
                 'AspNetUserLogins', 'AspNetUserRoles', 'AspNetUserTokens', 'RefreshTokens'
             ] LOOP
-                IF to_regclass(format('culinary.%I', identity_table)) IS NOT NULL
-                   AND to_regclass(format('public.%I', identity_table)) IS NULL THEN
-                    EXECUTE format('ALTER TABLE culinary.%I SET SCHEMA public', identity_table);
+                IF to_regclass(format('public.%I', identity_table)) IS NOT NULL
+                   AND to_regclass(format('culinary.%I', identity_table)) IS NULL THEN
+                    EXECUTE format('ALTER TABLE public.%I SET SCHEMA culinary', identity_table);
                 END IF;
             END LOOP;
         END $EF$;
 
         DO $EF$
         BEGIN
-            IF to_regclass('public."AspNetUsers"') IS NOT NULL
-               AND to_regclass('public."AspNetRoles"') IS NOT NULL
-               AND to_regclass('public."RefreshTokens"') IS NOT NULL
+            IF to_regclass('culinary."__EFMigrationsHistory"') IS NOT NULL THEN
+                INSERT INTO public."__EFMigrationsHistory" SELECT * FROM culinary."__EFMigrationsHistory"
+                ON CONFLICT ("MigrationId") DO NOTHING;
+            END IF;
+            IF to_regclass('culinary."AspNetUsers"') IS NOT NULL
+               AND to_regclass('culinary."AspNetRoles"') IS NOT NULL
+               AND to_regclass('culinary."RefreshTokens"') IS NOT NULL
                AND to_regclass('culinary."Categories"') IS NOT NULL
                AND to_regclass('culinary."Recipes"') IS NOT NULL
                AND to_regclass('culinary."RecipeIngredients"') IS NOT NULL
                AND to_regclass('culinary."RecipeSteps"') IS NOT NULL
                AND to_regclass('culinary."RecipeImages"') IS NOT NULL THEN
-                INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+                INSERT INTO public."__EFMigrationsHistory" ("MigrationId", "ProductVersion")
                 VALUES ('20260930100715_InitialDockerDatabase', '10.0.12')
                 ON CONFLICT ("MigrationId") DO NOTHING;
             END IF;
@@ -289,4 +304,3 @@ static int ParseIntWithOut(string? value, int defaultValue, string fieldName, ou
 }
 
 public partial class Program { }
-

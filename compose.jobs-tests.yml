@@ -1,0 +1,97 @@
+name: culinary-jobs-tests
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: culinary_jobs_tests
+      POSTGRES_USER: culinary
+      POSTGRES_PASSWORD: culinary_jobs_test_password
+    ports: ["127.0.0.1:55433:5432"]
+    volumes: [jobs-postgres:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U culinary -d culinary_jobs_tests"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  redis:
+    image: redis:7-alpine
+    ports: ["127.0.0.1:16379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  minio:
+    build:
+      context: .
+      dockerfile: docker/Minio.Dockerfile
+    environment:
+      MINIO_ROOT_USER: culinary_jobs
+      MINIO_ROOT_PASSWORD: culinary_jobs_minio_password
+    ports: ["127.0.0.1:19000:9000", "127.0.0.1:19001:9001"]
+    volumes: [jobs-minio:/data]
+  mailpit:
+    image: axllent/mailpit:latest
+    ports: ["127.0.0.1:18025:8025"]
+  seq:
+    image: datalust/seq:latest
+    environment:
+      ACCEPT_EULA: "Y"
+      SEQ_FIRSTRUN_NOAUTHENTICATION: "True"
+    ports: ["127.0.0.1:15341:80"]
+    volumes: [jobs-seq:/data]
+  collector:
+    image: otel/opentelemetry-collector-contrib:0.123.0
+    user: "0:0"
+    command: ["--config=/etc/otelcol/config.yml"]
+    volumes:
+      - ./docker/otel-collector.yml:/etc/otelcol/config.yml:ro
+      - jobs-telemetry:/data
+  api:
+    build:
+      context: .
+      dockerfile: docker/JobsApi.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      minio: {condition: service_started}
+      mailpit: {condition: service_started}
+      collector: {condition: service_started}
+      seq: {condition: service_started}
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__DefaultConnection: Host=postgres;Database=culinary_jobs_tests;Username=culinary;Password=culinary_jobs_test_password
+      Database__AutoMigrate: "true"
+      Database__SeedLab2: "true"
+      Redis__Connection: redis:6379
+      FileStorage__Provider: Minio
+      MinIO__Endpoint: minio:9000
+      MinIO__PublicBaseUrl: http://localhost:19000
+      MinIO__BucketName: culinary-blog
+      MinIO__AccessKey: culinary_jobs
+      MinIO__SecretKey: culinary_jobs_minio_password
+      MinIO__InitializeBucket: "true"
+      Email__SmtpHost: mailpit
+      Email__SmtpPort: "1025"
+      Email__From: noreply@culinary.local
+      Site__BaseUrl: http://localhost:3000
+      Site__PublicApiUrl: http://localhost:5059
+      Observability__SeqUrl: http://seq:5341
+      Observability__OtlpEndpoint: http://collector:4318
+      OTEL_METRIC_EXPORT_INTERVAL: "5000"
+      Jwt__Secret: CulinaryJobsDockerDevelopmentSecretKeyAtLeast32Characters
+      Jwt__Issuer: CulinaryBlog
+      Jwt__Audience: CulinaryBlogApp
+    ports: ["127.0.0.1:5059:8080"]
+    volumes:
+      - jobs-wwwroot:/app/wwwroot
+      - jobs-logs:/app/logs
+volumes:
+  jobs-postgres:
+  jobs-minio:
+  jobs-seq:
+  jobs-wwwroot:
+  jobs-logs:
+  jobs-telemetry:

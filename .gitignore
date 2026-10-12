@@ -181,3 +181,5 @@ src/CulinaryBlog.API/wwwroot/uploads/
 .superpowers/
 .codegraph/
 .env
+
+artifacts/
