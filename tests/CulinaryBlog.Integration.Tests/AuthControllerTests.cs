@@ -2,13 +2,17 @@ namespace CulinaryBlog.Integration.Tests;
 
 using System.IdentityModel.Tokens.Jwt;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Claims;
+using System.Text;
 using System.Text.Json;
 using CulinaryBlog.Application.DTOs.Auth;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Infrastructure.Data;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -393,6 +397,70 @@ public class AuthControllerTests : IClassFixture<CustomWebApplicationFactory>
             dbRevoked.Should().NotBeNull();
             dbRevoked!.RevokedAt.Should().BeCloseTo(originalRevokedAt, TimeSpan.FromSeconds(1));
         }
+    }
+
+    [Fact]
+    public async Task Logout_WithoutBody_Returns204()
+    {
+        var response = await _factory.CreateClient().PostAsync("/api/v1/auth/logout", content: null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await response.Content.ReadAsStringAsync()).Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"refreshToken\":null}")]
+    [InlineData("{\"refreshToken\":\"\"}")]
+    [InlineData("{\"refreshToken\":\"   \"}")]
+    public async Task Logout_WithMissingNullOrBlankRefreshToken_Returns204(string payload)
+    {
+        var response = await _factory.CreateClient().PostAsync(
+            "/api/v1/auth/logout",
+            new StringContent(payload, Encoding.UTF8, "application/json"));
+
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await response.Content.ReadAsStringAsync()).Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("expired")]
+    [InlineData("malformed")]
+    public async Task Logout_WithInvalidAuthorizationHeader_Returns204AndRevokesToken(string authorizationKind)
+    {
+        var registerResponse = await _client.PostAsJsonAsync(
+            "/api/v1/auth/register",
+            CreateUniqueRegisterRequest("logout_invalid_auth"));
+        var auth = await registerResponse.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions);
+        var rawRefreshToken = auth!.RefreshToken;
+        var tokenHash = RefreshToken.HashToken(rawRefreshToken);
+        using var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            authorizationKind == "expired" ? CreateExpiredJwt() : "malformed");
+
+        var response = await client.PostAsJsonAsync("/api/v1/auth/logout", new LogoutRequest(rawRefreshToken));
+
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await response.Content.ReadAsStringAsync()).Should().BeEmpty();
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        (await db.RefreshTokens.FirstAsync(token => token.TokenHash == tokenHash)).RevokedAt.Should().NotBeNull();
+    }
+
+    private static string CreateExpiredJwt()
+    {
+        var token = new JwtSecurityToken(
+            issuer: "CulinaryBlog",
+            audience: "CulinaryBlogApp",
+            claims: [new Claim(JwtRegisteredClaimNames.Sub, "expired-user")],
+            notBefore: DateTime.UtcNow.AddHours(-2),
+            expires: DateTime.UtcNow.AddHours(-1),
+            signingCredentials: new SigningCredentials(
+                new SymmetricSecurityKey(Encoding.UTF8.GetBytes("CulinaryBlogDefaultSuperSecretKeyForDevelopmentAndTestingPurposesOnly32Chars!")),
+                SecurityAlgorithms.HmacSha256));
+
+        return new JwtSecurityTokenHandler().WriteToken(token);
     }
 }
 

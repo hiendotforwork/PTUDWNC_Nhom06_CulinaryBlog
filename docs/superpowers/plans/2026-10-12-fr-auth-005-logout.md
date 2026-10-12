@@ -121,10 +121,13 @@ git commit -m "feat: add refresh-token logout command"
 | `Logout_WithActiveRefreshToken_Returns204AndRevokesToken` | Register a unique user; POST its returned refresh token without Authorization. | Status 204; `ApplicationDbContext.RefreshTokens` contains the token hash with non-null `RevokedAt`. |
 | `Logout_WithUnknownRefreshToken_Returns204` | POST a random token without Authorization. | Status 204 and empty body. |
 | `Logout_WithExpiredOrRevokedRefreshToken_Returns204` | Seed an expired token and a revoked token, then POST each raw token. | Each response is 204 and neither token is changed. |
+| `Logout_WithoutBody_Returns204` | POST with no content. | Status 204 and empty body. |
+| `Logout_WithMissingNullOrBlankRefreshToken_Returns204` | POST `{}`, `null`, empty, and whitespace `refreshToken` JSON values. | Each response is 204 and empty. |
+| `Logout_WithInvalidAuthorizationHeader_Returns204AndRevokesToken` | POST an active refresh token with a valid-but-expired JWT, then malformed Bearer credentials. | Each response is 204/empty and each submitted refresh token is revoked. |
 
 - [ ] **Step 1: Write failing integration tests**
 
-Append the three cases above to `AuthControllerTests`. Use `_factory.Services.CreateScope()` and `ApplicationDbContext` to seed/read refresh tokens. Use `RefreshToken.HashToken(raw)` when asserting persisted state; set `AllowAutoRedirect` only where a redirect is involved (not needed here).
+Append the six cases above to `AuthControllerTests`. Use `_factory.Services.CreateScope()` and `ApplicationDbContext` to seed/read refresh tokens. Use `RefreshToken.HashToken(raw)` when asserting persisted state. Send missing-body and JSON null/blank cases as real HTTP payloads, and sign the expired JWT with the test JWT secret so the test demonstrates expiry rather than a malformed-token path.
 
 - [ ] **Step 2: Run integration tests to verify RED**
 
