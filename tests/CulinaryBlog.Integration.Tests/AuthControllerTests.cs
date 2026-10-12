@@ -289,4 +289,57 @@ public class AuthControllerTests : IClassFixture<CustomWebApplicationFactory>
         response.Headers.Location.Should().NotBeNull();
         response.Headers.Location!.ToString().Should().Contain("/login");
     }
+
+    [Fact]
+    public async Task Refresh_ValidToken_ReturnsNewTokens()
+    {
+        // Arrange - register user to get initial tokens
+        var registerRequest = CreateUniqueRegisterRequest("refresh_valid");
+        var regResponse = await _client.PostAsJsonAsync("/api/v1/auth/register", registerRequest);
+        regResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+        var regContent = await regResponse.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions);
+        var originalRefreshToken = regContent!.RefreshToken;
+
+        // Act
+        var refreshResponse = await _client.PostAsJsonAsync("/api/v1/auth/refresh", new RefreshTokenRequest(originalRefreshToken));
+
+        // Assert
+        refreshResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var result = await refreshResponse.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions);
+        result.Should().NotBeNull();
+        result!.AccessToken.Should().NotBeNullOrWhiteSpace();
+        result.RefreshToken.Should().NotBeNullOrWhiteSpace();
+        result.RefreshToken.Should().NotBe(originalRefreshToken);
+    }
+
+    [Fact]
+    public async Task Refresh_InvalidToken_ReturnsUnauthorized()
+    {
+        // Act
+        var response = await _client.PostAsJsonAsync("/api/v1/auth/refresh", new RefreshTokenRequest("invalid-token-12345"));
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Refresh_TokenRotation_OldTokenInvalidated()
+    {
+        // Arrange - register user to get initial tokens
+        var registerRequest = CreateUniqueRegisterRequest("refresh_reuse");
+        var regResponse = await _client.PostAsJsonAsync("/api/v1/auth/register", registerRequest);
+        regResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+        var regContent = await regResponse.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions);
+        var originalRefreshToken = regContent!.RefreshToken;
+
+        // First refresh
+        var firstRefresh = await _client.PostAsJsonAsync("/api/v1/auth/refresh", new RefreshTokenRequest(originalRefreshToken));
+        firstRefresh.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Act - Try to use original token again (should fail - reuse attack)
+        var secondRefresh = await _client.PostAsJsonAsync("/api/v1/auth/refresh", new RefreshTokenRequest(originalRefreshToken));
+
+        // Assert
+        secondRefresh.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
 }

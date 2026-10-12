@@ -31,6 +31,8 @@ import {
 } from "../lib/api";
 import * as auth from "../lib/auth";
 
+const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80";
+
 interface AppContextType {
   currentUser: User | null;
   setCurrentUser: (user: User | null) => void;
@@ -67,25 +69,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // Start with null; restore from localStorage via useEffect below
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-  // Restore auth state after hydration so server and browser render the same first frame.
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      const stored = auth.getStoredUser();
-      if (stored) {
-        setCurrentUser({
-          id: stored.id,
-          displayName: stored.displayName,
-          userName: stored.userName,
-          email: stored.email,
-          avatarUrl: stored.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
-          bio: stored.bio,
-          role: stored.roles?.includes("Admin") ? "Admin" : "User",
-          createdAt: stored.createdAt || new Date().toISOString(),
-        });
-      }
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, []);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
 
   const [categories, setCategories] = useState<Category[]>([
@@ -168,12 +151,47 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [showToast]);
 
+  // Khởi tạo phiên đăng nhập sau hydration, làm mới token nếu sắp hết hạn, sau đó nạp công thức và danh mục
   useEffect(() => {
-    const timer = window.setTimeout(() => void reloadRecipes(), 0);
-    const categoryTimer = window.setTimeout(() => void reloadCategories(), 0);
+    let cancelled = false;
+
+    const syncUserFromStorage = () => {
+      const stored = auth.getStoredUser();
+      if (stored) {
+        setCurrentUser({
+          id: stored.id,
+          displayName: stored.displayName,
+          userName: stored.userName,
+          email: stored.email,
+          avatarUrl: stored.avatarUrl || DEFAULT_AVATAR,
+          bio: stored.bio,
+          role: stored.roles?.includes("Admin") ? "Admin" : "User",
+          createdAt: stored.createdAt || new Date().toISOString(),
+        });
+      } else {
+        setCurrentUser(null);
+      }
+    };
+
+    const init = async () => {
+      const storedRefreshToken = auth.getRefreshToken();
+      if (storedRefreshToken && auth.isTokenExpiringSoon()) {
+        await auth.refreshAccessToken();
+      }
+
+      if (cancelled) return;
+      syncUserFromStorage();
+      await Promise.all([reloadRecipes(), reloadCategories()]);
+    };
+
+    init();
+
+    // Listen for auth state changes (login, logout, refresh)
+    const unsubscribe = auth.onAuthChange(syncUserFromStorage);
+
     return () => {
-      window.clearTimeout(timer);
-      window.clearTimeout(categoryTimer);
+      cancelled = true;
+      unsubscribe();
     };
   }, [reloadCategories, reloadRecipes]);
 
