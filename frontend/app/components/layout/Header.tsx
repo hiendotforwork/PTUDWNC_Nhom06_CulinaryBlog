@@ -200,7 +200,7 @@ export const Header: React.FC = () => {
           <button
             onClick={() => {
               if (currentUser) {
-                logout();
+                void logout();
               } else {
                 login("hoanglinh@culinaryblog.vn");
               }
@@ -293,7 +293,7 @@ export const Header: React.FC = () => {
                     <button
                       onClick={() => {
                         setIsUserMenuOpen(false);
-                        logout();
+                        void logout();
                       }}
                       className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-[#B85C5C] hover:bg-[#F9EBEB] transition-colors cursor-pointer"
                     >
@@ -396,7 +396,7 @@ export const Header: React.FC = () => {
                 <button
                   onClick={() => {
                     setIsMobileMenuOpen(false);
-                    logout();
+                    void logout();
                   }}
                   className="text-xs font-semibold text-[#B85C5C] text-left py-2 px-3 rounded-lg hover:bg-[#F9EBEB]"
                 >

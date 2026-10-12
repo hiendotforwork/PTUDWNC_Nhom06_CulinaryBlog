@@ -116,6 +116,19 @@ export async function login(data: LoginRequest): Promise<AuthResponse> {
   return handleResponse<AuthResponse>(res);
 }
 
+// Chức năng: gửi yêu cầu thu hồi refresh token khi đăng xuất.
+// Input: refreshToken - refresh token của phiên hiện tại. Output: Promise<void>.
+export async function logout(refreshToken: string | null): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/v1/auth/logout`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refreshToken }),
+  });
+  if (!res.ok) {
+    await handleResponse<void>(res);
+  }
+}
+
 // Chức năng: tạo header JSON và Bearer token cho request.
 // Input: json - có gửi JSON hay không. Output: tập header HTTP.
 function authHeaders(json = false): HeadersInit {
