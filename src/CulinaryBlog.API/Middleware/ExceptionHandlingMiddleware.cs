@@ -136,7 +136,8 @@ public class ExceptionHandlingMiddleware
 
         var json = JsonSerializer.Serialize(response, new JsonSerializerOptions
         {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
         });
 
         await context.Response.WriteAsync(json);
