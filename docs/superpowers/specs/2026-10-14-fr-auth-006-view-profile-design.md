@@ -57,6 +57,11 @@ Successful response (`200 OK`):
 
 Response nullability and collection rules:
 
+- `id`, `displayName`, `email`, and `userName` are non-null strings. A persisted
+  profile must have non-empty `email` and `userName`, as required by the
+  registration and external-login flows. If stored data violates this
+  invariant, treat it as a data-integrity failure and return the generic 500
+  response; do not emit null or an empty string.
 - `avatarUrl`: string or `null`.
 - `bio`: string or `null`.
 - `roles`: non-null array; use `[]` when the user has no roles.
@@ -96,6 +101,10 @@ the refreshed values. Do not request the profile on other pages. The API
 client's existing refresh behavior handles an expired access token; if
 authentication still fails, its existing auth clearing behavior applies.
 
+Preserve the exact API `roles` array in shared user state. Keep the existing
+`role` field only as the UI's derived Admin/User flag; do not replace or discard
+the source roles such as `Author`.
+
 Keep the profile page's existing edit controls, but do not change their save
 behavior in this feature. The response should populate the visible profile
 and edit fields. A request failure should not be shown as an unauthenticated
@@ -106,7 +115,8 @@ profile no longer exists.
 
 - Application handler: maps all public profile fields and roles; returns the
   not-found outcome when lookup by ID fails; preserves nullable `avatarUrl` and
-  `bio`, and returns `[]` when no roles exist.
+  `bio`, returns `[]` when no roles exist, and rejects stored users without
+  non-empty email or username.
 - Controller/unit: a missing usable user-ID claim returns 401 and the mediator
   is not called.
 - API integration: a valid token returns 200 and expected fields; no token or
@@ -125,4 +135,5 @@ profile no longer exists.
    claim receive 401; a deleted account receives 404.
 4. The response includes only the agreed profile fields and never includes
    credential data.
-5. FR-AUTH-007 save behavior and unrelated application pages are unchanged.
+5. The frontend retains the exact `roles` array alongside its derived UI role.
+6. FR-AUTH-007 save behavior and unrelated application pages are unchanged.
