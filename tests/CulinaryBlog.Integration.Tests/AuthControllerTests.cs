@@ -14,6 +14,7 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.Identity;
 using Xunit;
 
 public class AuthControllerTests : IClassFixture<CustomWebApplicationFactory>
@@ -514,6 +515,93 @@ public class AuthControllerTests : IClassFixture<CustomWebApplicationFactory>
 
         // Assert
         secondRefresh.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    private static string CreateValidJwt(params Claim[] claims)
+    {
+        var token = new JwtSecurityToken(
+            issuer: "CulinaryBlog",
+            audience: "CulinaryBlogApp",
+            claims: claims,
+            notBefore: DateTime.UtcNow.AddMinutes(-5),
+            expires: DateTime.UtcNow.AddHours(1),
+            signingCredentials: new SigningCredentials(
+                new SymmetricSecurityKey(Encoding.UTF8.GetBytes("CulinaryBlogDefaultSuperSecretKeyForDevelopmentAndTestingPurposesOnly32Chars!")),
+                SecurityAlgorithms.HmacSha256));
+
+        return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    [Fact]
+    public async Task GetCurrentUser_WithoutToken_Returns401()
+    {
+        var response = await _client.GetAsync("/api/v1/auth/me");
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task GetCurrentUser_WithValidToken_ReturnsProfile()
+    {
+        var registerRequest = CreateUniqueRegisterRequest("me_valid");
+        var regResponse = await _client.PostAsJsonAsync("/api/v1/auth/register", registerRequest);
+        regResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+        var regContent = await regResponse.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/me");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", regContent!.AccessToken);
+
+        var response = await _client.SendAsync(request);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var rawJson = await response.Content.ReadAsStringAsync();
+        rawJson.Should().NotContain("passwordHash").And.NotContain("securityStamp");
+
+        var profile = JsonSerializer.Deserialize<UserProfileDto>(rawJson, _jsonOptions);
+        profile.Should().NotBeNull();
+        profile!.Id.Should().Be(regContent.User.Id);
+        profile.DisplayName.Should().Be(regContent.User.DisplayName);
+        profile.Email.Should().Be(regContent.User.Email);
+        profile.UserName.Should().Be(regContent.User.UserName);
+        profile.AvatarUrl.Should().BeNull();
+        profile.Bio.Should().BeNull();
+        profile.Roles.Should().Contain("Author");
+        profile.EmailConfirmed.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GetCurrentUser_WithoutUserIdClaims_Returns401()
+    {
+        var token = CreateValidJwt(new Claim("unrelated_claim", "value"));
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/me");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var response = await _client.SendAsync(request);
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task GetCurrentUser_WhenUserDoesNotExist_Returns404()
+    {
+        var registerRequest = CreateUniqueRegisterRequest("me_deleted");
+        var regResponse = await _client.PostAsJsonAsync("/api/v1/auth/register", registerRequest);
+        regResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+        var regContent = await regResponse.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            var user = await userManager.FindByEmailAsync(registerRequest.Email);
+            user.Should().NotBeNull();
+            var deleteResult = await userManager.DeleteAsync(user!);
+            deleteResult.Succeeded.Should().BeTrue();
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/me");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", regContent!.AccessToken);
+
+        var response = await _client.SendAsync(request);
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 }
 

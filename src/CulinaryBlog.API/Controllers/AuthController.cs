@@ -6,6 +6,8 @@ using CulinaryBlog.Application.Commands.Auth.Logout;
 using CulinaryBlog.Application.Commands.Auth.RefreshToken;
 using CulinaryBlog.Application.DTOs.Auth;
 using CulinaryBlog.Application.Commands.Auth.GoogleLogin;
+using CulinaryBlog.Application.Queries.Auth;
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
@@ -193,5 +195,33 @@ public class AuthController : ControllerBase
     {
         await _mediator.Send(new LogoutCommand(request?.RefreshToken), cancellationToken);
         return NoContent();
+    }
+
+    [HttpGet("me")]
+    [Authorize]
+    [ProducesResponseType(typeof(UserProfileDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<UserProfileDto>> GetCurrentUser(CancellationToken cancellationToken)
+    {
+        var nameIdentifier = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var sub = User.FindFirstValue(JwtRegisteredClaimNames.Sub) ?? User.FindFirst("sub")?.Value;
+
+        var userId = !string.IsNullOrWhiteSpace(nameIdentifier) ? nameIdentifier.Trim()
+            : !string.IsNullOrWhiteSpace(sub) ? sub.Trim()
+            : null;
+
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return Unauthorized();
+        }
+
+        var profile = await _mediator.Send(new GetCurrentUserQuery(userId), cancellationToken);
+        if (profile is null)
+        {
+            return NotFound();
+        }
+
+        return Ok(profile);
     }
 }
