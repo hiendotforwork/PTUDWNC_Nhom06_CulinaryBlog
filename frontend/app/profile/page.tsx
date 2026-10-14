@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Suspense, useState } from "react";
+import React, { Suspense, useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -14,8 +14,11 @@ import {
   AtSign,
   ChevronRight,
   Save,
+  AlertCircle,
 } from "lucide-react";
-import { useApp } from "../context/AppContext";
+import { useApp, DEFAULT_AVATAR } from "../context/AppContext";
+import { getCurrentUser } from "../lib/api";
+import { User } from "../lib/types";
 import { Input, Textarea } from "../components/ui/Input";
 import { Button } from "../components/ui/Button";
 import { RecipeGrid } from "../components/recipe/RecipeGrid";
@@ -24,7 +27,7 @@ function ProfileContent() {
   const searchParams = useSearchParams();
   const initialTab = searchParams.get("tab") === "recipes" ? "recipes" : "profile";
 
-  const { currentUser, recipes, favorites, updateProfile, showToast } = useApp();
+  const { currentUser, setCurrentUser, recipes, favorites, updateProfile, showToast } = useApp();
 
   const [activeTab, setActiveTab] = useState<"profile" | "recipes" | "favorites">(initialTab);
   const [displayName, setDisplayName] = useState(currentUser?.displayName || "");
@@ -32,6 +35,61 @@ function ProfileContent() {
   const [avatarUrl, setAvatarUrl] = useState(currentUser?.avatarUrl || "");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+  const [profileError, setProfileError] = useState<{ is404: boolean; message: string } | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const currentUserId = currentUser?.id;
+
+  useEffect(() => {
+    if (!currentUserId) return;
+    let ignore = false;
+    getCurrentUser()
+      .then((profile) => {
+        if (ignore) return;
+        const mappedUser: User = {
+          id: profile.id,
+          displayName: profile.displayName,
+          userName: profile.userName,
+          email: profile.email,
+          avatarUrl: profile.avatarUrl || DEFAULT_AVATAR,
+          bio: profile.bio || undefined,
+          roles: profile.roles,
+          role: profile.roles.includes("Admin") ? "Admin" : "User",
+          createdAt: profile.createdAt,
+        };
+        setCurrentUser(mappedUser);
+        setDisplayName(profile.displayName);
+        setBio(profile.bio || "");
+        setAvatarUrl(profile.avatarUrl || "");
+        setIsLoadingProfile(false);
+      })
+      .catch((err: unknown) => {
+        if (ignore) return;
+        const apiError = err as { statusCode?: number; message?: string };
+        if (apiError.statusCode === 404) {
+          setProfileError({
+            is404: true,
+            message: "Hồ sơ của bạn không tồn tại hoặc đã bị xóa trên hệ thống.",
+          });
+        } else {
+          setProfileError({
+            is404: false,
+            message: apiError.message || "Không thể tải thông tin hồ sơ từ máy chủ. Vui lòng kiểm tra kết nối mạng và thử lại.",
+          });
+        }
+        setIsLoadingProfile(false);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [currentUserId, retryCount, setCurrentUser]);
+
+  const handleRetry = useCallback(() => {
+    setIsLoadingProfile(true);
+    setProfileError(null);
+    setRetryCount((prev) => prev + 1);
+  }, []);
 
   if (!currentUser) {
     return (
@@ -54,6 +112,52 @@ function ProfileContent() {
                   Đăng ký
                 </Button>
               </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoadingProfile) {
+    return (
+      <div className="max-w-md mx-auto py-16 px-4 text-center">
+        <div className="double-bezel">
+          <div className="double-bezel-inner p-8 flex flex-col items-center gap-4">
+            <div className="animate-spin w-8 h-8 border-2 border-[#C98F7D] border-t-transparent rounded-full" />
+            <p className="text-xs text-[#8A817C]">Đang tải thông tin hồ sơ...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (profileError) {
+    if (profileError.is404) {
+      return (
+        <div className="max-w-md mx-auto py-16 px-4 text-center">
+          <div className="double-bezel">
+            <div className="double-bezel-inner p-8 flex flex-col items-center gap-4">
+              <UserIcon className="w-12 h-12 text-[#8A817C]" />
+              <h2 className="font-serif text-xl font-bold">Hồ sơ không tồn tại</h2>
+              <p className="text-xs text-[#8A817C]">{profileError.message}</p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="max-w-md mx-auto py-16 px-4 text-center">
+        <div className="double-bezel">
+          <div className="double-bezel-inner p-8 flex flex-col items-center gap-4">
+            <AlertCircle className="w-12 h-12 text-[#C98F7D]" />
+            <h2 className="font-serif text-xl font-bold">Lỗi tải hồ sơ</h2>
+            <p className="text-xs text-[#8A817C]">{profileError.message}</p>
+            <div className="mt-2">
+              <Button variant="primary" size="md" onClick={handleRetry}>
+                Thử lại
+              </Button>
             </div>
           </div>
         </div>

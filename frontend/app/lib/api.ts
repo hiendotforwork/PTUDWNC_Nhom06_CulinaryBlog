@@ -16,6 +16,7 @@ import {
   RecipeStatus,
   RecipeStep,
   RegisterRequest,
+  UserProfileResponse,
 } from "./types";
 import { getToken, refreshAccessToken, clearAuth } from "./auth";
 
@@ -172,6 +173,13 @@ async function authFetch(url: string, init: RequestInit = {}, json = false): Pro
   }
 
   return res;
+}
+
+// Chức năng: lấy thông tin hồ sơ của người dùng hiện tại từ API xác thực.
+// Input: không có. Output: UserProfileResponse của người dùng đăng nhập.
+export async function getCurrentUser(): Promise<UserProfileResponse> {
+  const res = await authFetch(`${API_BASE}/api/v1/auth/me`);
+  return handleResponse<UserProfileResponse>(res);
 }
 
 // Chức năng: đổi mã độ khó từ API sang kiểu hiển thị.

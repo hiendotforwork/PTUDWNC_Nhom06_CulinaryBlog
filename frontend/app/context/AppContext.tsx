@@ -32,7 +32,7 @@ import {
 } from "../lib/api";
 import * as auth from "../lib/auth";
 
-const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80";
+export const DEFAULT_AVATAR = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80";
 
 interface AppContextType {
   currentUser: User | null;
@@ -166,6 +166,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           email: stored.email,
           avatarUrl: stored.avatarUrl || DEFAULT_AVATAR,
           bio: stored.bio,
+          roles: stored.roles,
           role: stored.roles?.includes("Admin") ? "Admin" : "User",
           createdAt: stored.createdAt || new Date().toISOString(),
         });
@@ -412,8 +413,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         displayName: response.user.displayName,
         userName: response.user.userName,
         email: response.user.email,
-        avatarUrl: response.user.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
+        avatarUrl: response.user.avatarUrl || DEFAULT_AVATAR,
         bio: response.user.bio,
+        roles: response.user.roles,
         role: response.user.roles?.includes("Admin") ? "Admin" : "User",
         createdAt: new Date().toISOString(),
       };
@@ -503,8 +505,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         displayName: response.user.displayName,
         userName: response.user.userName,
         email: response.user.email,
-        avatarUrl: response.user.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
+        avatarUrl: response.user.avatarUrl || DEFAULT_AVATAR,
         bio: response.user.bio,
+        roles: response.user.roles,
         role: response.user.roles?.includes("Admin") ? "Admin" : "User",
         createdAt: new Date().toISOString(),
       };
@@ -583,8 +586,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       displayName: authUser.displayName,
       userName: authUser.userName,
       email: authUser.email,
-      avatarUrl: authUser.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
+      avatarUrl: authUser.avatarUrl || DEFAULT_AVATAR,
       bio: authUser.bio,
+      roles: authUser.roles,
       role: authUser.roles?.includes("Admin") ? "Admin" : "User",
       createdAt: new Date().toISOString(),
     };

@@ -12,6 +12,19 @@ export interface User {
   avatarUrl: string;
   bio?: string;
   role: "User" | "Admin";
+  roles?: string[];
+  createdAt: string;
+}
+
+export interface UserProfileResponse {
+  id: string;
+  displayName: string;
+  email: string;
+  userName: string;
+  avatarUrl: string | null;
+  bio: string | null;
+  roles: string[];
+  emailConfirmed: boolean;
   createdAt: string;
 }
 
