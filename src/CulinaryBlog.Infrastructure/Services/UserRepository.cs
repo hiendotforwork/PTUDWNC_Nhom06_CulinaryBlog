@@ -16,6 +16,14 @@ public class UserRepository : IUserRepository
         _roleManager = roleManager;
     }
 
+    public async Task<ApplicationUser?> FindByIdAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+            return null;
+
+        return await _userManager.FindByIdAsync(userId);
+    }
+
     public async Task<ApplicationUser?> FindByEmailAsync(string email, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(email))

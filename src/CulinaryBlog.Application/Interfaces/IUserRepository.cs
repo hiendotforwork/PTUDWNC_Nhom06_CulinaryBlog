@@ -11,6 +11,7 @@ public record SignInResult(
 
 public interface IUserRepository
 {
+    Task<ApplicationUser?> FindByIdAsync(string userId, CancellationToken cancellationToken = default);
     Task<ApplicationUser?> FindByEmailAsync(string email, CancellationToken cancellationToken = default);
     Task<ApplicationUser?> FindByUserNameAsync(string userName, CancellationToken cancellationToken = default);
     Task<(bool Succeeded, IEnumerable<string> Errors)> CreateAsync(ApplicationUser user, string password);
