@@ -107,10 +107,12 @@ profile no longer exists.
 - Application handler: maps all public profile fields and roles; returns the
   not-found outcome when lookup by ID fails; preserves nullable `avatarUrl` and
   `bio`, and returns `[]` when no roles exist.
-- API integration: valid token returns 200 and expected fields; no token
-  returns 401; authenticated token without a usable user-ID claim returns 401
-  without dispatching the query; missing user returns 404; response contains
-  no credential fields. Do not assert role ordering.
+- Controller/unit: a missing usable user-ID claim returns 401 and the mediator
+  is not called.
+- API integration: a valid token returns 200 and expected fields; no token or
+  a principal without a usable user-ID claim returns 401; a missing user
+  returns 404; response contains no credential fields. Do not assert role
+  ordering.
 - Frontend: authenticated profile page displays the API response; loading,
   network/API error, retry, and unauthenticated states behave as specified.
 
@@ -119,7 +121,8 @@ profile no longer exists.
 1. A signed-in user sees profile data returned by `GET /api/v1/auth/me` on
    `/profile`, including the current database values.
 2. A user cannot select another account's profile by changing request input.
-3. Anonymous requests receive 401; a deleted account receives 404.
+3. Anonymous requests and authenticated principals without a usable user-ID
+   claim receive 401; a deleted account receives 404.
 4. The response includes only the agreed profile fields and never includes
    credential data.
 5. FR-AUTH-007 save behavior and unrelated application pages are unchanged.
