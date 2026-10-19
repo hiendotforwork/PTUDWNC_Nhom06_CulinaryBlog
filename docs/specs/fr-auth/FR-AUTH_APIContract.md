@@ -399,8 +399,9 @@ paths:
     summary: Update current user profile
     description: |
       Updates the authenticated user's profile.
-      All fields are optional - only provided fields are updated.
-      Email and userName cannot be changed via this endpoint.
+      Supports displayName and bio. All fields are optional - only provided fields are updated.
+      Email, userName, and avatarUrl cannot be changed via this endpoint.
+      For avatar upload and removal, use POST /api/v1/users/me/avatar and DELETE /api/v1/users/me/avatar.
     operationId: updateProfile
     security:
       - BearerAuth: []
@@ -415,19 +416,14 @@ paths:
               summary: Update display name only
               value:
                 displayName: "Tên Mới"
-            updateAvatar:
-              summary: Update avatar only
-              value:
-                avatarUrl: "https://storage.googleapis.com/avatars/new-avatar.jpg"
             updateBio:
               summary: Update bio only
               value:
                 bio: "Giới thiệu ngắn về bản thân"
             updateAll:
-              summary: Update all fields
+              summary: Update both display name and bio
               value:
                 displayName: "Tên Mới"
-                avatarUrl: "https://storage.googleapis.com/avatars/new-avatar.jpg"
                 bio: "Giới thiệu ngắn về bản thân"
     responses:
       '200':
@@ -562,12 +558,6 @@ components:
           maxLength: 100
           description: New display name
           example: "Tên Mới"
-        avatarUrl:
-          type: string
-          format: uri
-          maxLength: 500
-          description: New avatar URL (must be HTTPS)
-          example: "https://storage.googleapis.com/avatars/new-avatar.jpg"
         bio:
           type: string
           maxLength: 500

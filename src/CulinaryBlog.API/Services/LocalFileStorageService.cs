@@ -43,4 +43,10 @@ public sealed class LocalFileStorageService(IWebHostEnvironment environment) : I
         if (path.StartsWith(rootFullPath, StringComparison.OrdinalIgnoreCase) && File.Exists(path)) File.Delete(path);
         return Task.CompletedTask;
     }
+
+    public bool IsOwnedUrl(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return false;
+        return System.Text.RegularExpressions.Regex.IsMatch(url, @"^/uploads/(recipes|avatars)/[A-Za-z0-9_-]+/[a-fA-F0-9]{32}\.(jpg|jpeg|png|webp|avif)$");
+    }
 }

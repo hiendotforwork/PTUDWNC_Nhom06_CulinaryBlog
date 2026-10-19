@@ -15,4 +15,7 @@ public interface IFileStorageService
     // Chức năng: xóa tệp theo URL nếu tồn tại.
     // Input: url và cancellationToken. Output: Task hoàn tất.
     Task DeleteAsync(string url, CancellationToken cancellationToken);
+    // Chức năng: kiểm tra URL có thuộc quyền sở hữu của kho lưu trữ này hay không.
+    // Input: url. Output: bool.
+    bool IsOwnedUrl(string url);
 }

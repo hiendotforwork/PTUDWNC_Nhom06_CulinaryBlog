@@ -444,6 +444,7 @@ public sealed class JobsObservabilityDatabaseTests
         }
         public Task DeleteAsync(string url, CancellationToken ct) { Files.Remove(url); return Task.CompletedTask; }
         public void Enqueue(string url) => Deletions.Add(url);
+        public bool IsOwnedUrl(string url) => !string.IsNullOrWhiteSpace(url) && url.StartsWith("/uploads/");
     }
     private sealed class TestEnvironment(string directory) : IWebHostEnvironment
     {

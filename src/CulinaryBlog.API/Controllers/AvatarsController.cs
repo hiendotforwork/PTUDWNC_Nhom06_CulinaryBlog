@@ -25,13 +25,15 @@ public sealed class AvatarsController(UserManager<ApplicationUser> users, IFileS
         await using var stream = request.File.OpenReadStream();
         var stored = await storage.UploadAsync(stream, request.File.ContentType, Path.GetExtension(request.File.FileName),
             "avatars/" + user.Id, ct);
+        var oldUrl = user.AvatarUrl;
         try
         {
-            if (user.AvatarUrl is { } oldUrl) deletions.Enqueue(oldUrl);
+            if (oldUrl is not null && storage.IsOwnedUrl(oldUrl)) deletions.Enqueue(oldUrl);
             user.AvatarUrl = stored.Url;
             var result = await users.UpdateAsync(user);
             if (!result.Succeeded)
             {
+                user.AvatarUrl = oldUrl;
                 deletions.Enqueue(stored.Url);
                 return Conflict(new { errorCode = "AVATAR_UPDATE_CONFLICT", errors = result.Errors });
             }
@@ -39,6 +41,7 @@ public sealed class AvatarsController(UserManager<ApplicationUser> users, IFileS
         }
         catch
         {
+            user.AvatarUrl = oldUrl;
             try { deletions.Enqueue(stored.Url); }
             catch (Exception cleanupError) { logger.LogError(cleanupError, "Failed to schedule cleanup for {Url}", stored.Url); }
             throw;
@@ -51,7 +54,7 @@ public sealed class AvatarsController(UserManager<ApplicationUser> users, IFileS
         var user = await users.GetUserAsync(User);
         if (user is null) return Unauthorized();
         if (user.AvatarUrl is null) return NoContent();
-        deletions.Enqueue(user.AvatarUrl);
+        if (storage.IsOwnedUrl(user.AvatarUrl)) deletions.Enqueue(user.AvatarUrl);
         user.AvatarUrl = null;
         var result = await users.UpdateAsync(user);
         return result.Succeeded ? NoContent() : Conflict(new { errorCode = "AVATAR_UPDATE_CONFLICT", errors = result.Errors });

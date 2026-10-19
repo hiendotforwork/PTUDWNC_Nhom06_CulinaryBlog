@@ -477,25 +477,24 @@ FR-AUTH (Module Xác thực và Quản lý Người dùng)
 
 > **[DECISION 4A]** Mở rộng FR-AUTH-007 để bao gồm `bio` field.
 
-**Mô tả:** Sử dụng PATCH (partial update). Email và UserName KHÔNG thể thay đổi qua endpoint này (đây là quy trình riêng có xác nhận OTP).
+**Mô tả:** Sử dụng PATCH (partial update) cho `displayName` và `bio`. Email, UserName và AvatarUrl KHÔNG thể thay đổi qua endpoint này (Avatar upload/removal sử dụng endpoint chuyên biệt `POST`/`DELETE /api/v1/users/me/avatar`).
 
 **Input:**
 ```json
 {
   "displayName": "string (2–100 ký tự, optional)",
-  "avatarUrl": "string (URL hợp lệ, optional)",
   "bio": "string (max 500 ký tự, optional)"
 }
 ```
 
 > **[DECISION 1A]** Sử dụng `displayName` thay vì `fullName`.
-> **[DECISION 4A]** Thêm `bio` field vào request.
+> **[DECISION 4A]** Thêm `bio` field vào request. Avatar thao tác qua `POST`/`DELETE /api/v1/users/me/avatar`.
 
 **Main Flow:**
 1. Client gửi `PATCH /api/v1/auth/me` với body
 2. `UpdateProfileCommand` dispatch, UserId lấy từ JWT claims
-3. `ValidationBehavior`: displayName 2–100 ký tự, avatarUrl là URL hợp lệ (nếu cung cấp), bio max 500 ký tự (nếu cung cấp) `[DECISION 4A]`
-4. Handler tìm user, cập nhật displayName, avatarUrl, bio `[DECISION 4A]`
+3. `ValidationBehavior`: displayName 2–100 ký tự (nếu cung cấp), bio max 500 ký tự (nếu cung cấp) `[DECISION 4A]`
+4. Handler tìm user, cập nhật displayName, bio `[DECISION 4A]`
 5. `UserManager.UpdateAsync(user)`
 6. Trả về HTTP 200 OK với `UserProfileDto` đã cập nhật
 
@@ -1010,19 +1009,18 @@ Kế thừa từ ASP.NET Core Identity `IdentityUser<string>`.
 |------------|----------|
 | **HTTP Method** | PATCH |
 | **Endpoint** | `/api/v1/auth/me` |
-| **Purpose** | Cập nhật profile (displayName, avatarUrl, bio) |
+| **Purpose** | Cập nhật profile (displayName, bio). Avatar upload/removal sử dụng POST/DELETE /api/v1/users/me/avatar |
 | **Auth Required** | Bearer JWT |
 
 **Request:**
 ```json
 {
   "displayName": "string (optional, 2-100 chars)",
-  "avatarUrl": "string (optional, valid URL)",
   "bio": "string (optional, max 500 chars)"
 }
 ```
 
-> **[DECISION 4A]** Thêm `bio` field.
+> **[DECISION 4A]** Thêm `bio` field. Avatar upload/removal sử dụng POST/DELETE /api/v1/users/me/avatar.
 
 **Response (200 OK):** Updated `UserProfileDto`
 

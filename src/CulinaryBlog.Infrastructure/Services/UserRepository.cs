@@ -131,4 +131,10 @@ public class UserRepository : IUserRepository
         await _userManager.ResetAccessFailedCountAsync(user);
         return new SignInResult(Succeeded: true);
     }
+
+    public async Task<(bool Succeeded, IEnumerable<string> Errors)> UpdateAsync(ApplicationUser user, CancellationToken cancellationToken = default)
+    {
+        var result = await _userManager.UpdateAsync(user);
+        return (result.Succeeded, result.Errors.Select(e => e.Description));
+    }
 }

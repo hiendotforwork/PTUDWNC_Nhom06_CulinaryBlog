@@ -6,6 +6,7 @@ using CulinaryBlog.Application.Commands.Auth.Logout;
 using CulinaryBlog.Application.Commands.Auth.RefreshToken;
 using CulinaryBlog.Application.DTOs.Auth;
 using CulinaryBlog.Application.Commands.Auth.GoogleLogin;
+using CulinaryBlog.Application.Commands.Auth.UpdateProfile;
 using CulinaryBlog.Application.Queries.Auth;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
@@ -25,6 +26,7 @@ public class AuthController : ControllerBase
     private readonly IValidator<RegisterCommand> _registerValidator;
     private readonly IValidator<LoginCommand> _loginValidator;
     private readonly IValidator<RefreshTokenCommand>? _refreshValidator;
+    private readonly IValidator<UpdateProfileCommand>? _updateProfileValidator;
     private readonly IConfiguration _configuration;
 
     public AuthController(
@@ -32,13 +34,15 @@ public class AuthController : ControllerBase
         IValidator<RegisterCommand> registerValidator,
         IValidator<LoginCommand> loginValidator,
         IConfiguration configuration,
-        IValidator<RefreshTokenCommand>? refreshValidator = null)
+        IValidator<RefreshTokenCommand>? refreshValidator = null,
+        IValidator<UpdateProfileCommand>? updateProfileValidator = null)
     {
         _mediator = mediator;
         _registerValidator = registerValidator;
         _loginValidator = loginValidator;
         _configuration = configuration;
         _refreshValidator = refreshValidator;
+        _updateProfileValidator = updateProfileValidator;
     }
 
     [HttpPost("register")]
@@ -222,6 +226,45 @@ public class AuthController : ControllerBase
             return NotFound();
         }
 
+        return Ok(profile);
+    }
+
+    [HttpPatch("me")]
+    [Authorize]
+    [ProducesResponseType(typeof(UserProfileDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<UserProfileDto>> UpdateProfile([FromBody] UpdateProfileRequest request, CancellationToken cancellationToken)
+    {
+        var nameIdentifier = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var sub = User.FindFirstValue(JwtRegisteredClaimNames.Sub) ?? User.FindFirst("sub")?.Value;
+
+        var userId = !string.IsNullOrWhiteSpace(nameIdentifier) ? nameIdentifier.Trim()
+            : !string.IsNullOrWhiteSpace(sub) ? sub.Trim()
+            : null;
+
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return Unauthorized();
+        }
+
+        var command = new UpdateProfileCommand(
+            userId,
+            request.DisplayName,
+            request.Bio
+        );
+
+        if (_updateProfileValidator != null)
+        {
+            var validationResult = await _updateProfileValidator.ValidateAsync(command, cancellationToken);
+            if (!validationResult.IsValid)
+            {
+                throw new ValidationException(validationResult.Errors);
+            }
+        }
+
+        var profile = await _mediator.Send(command, cancellationToken);
         return Ok(profile);
     }
 }

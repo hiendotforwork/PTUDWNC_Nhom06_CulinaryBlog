@@ -21,4 +21,5 @@ public interface IUserRepository
     Task<SignInResult> CheckPasswordSignInAsync(ApplicationUser user, string password, CancellationToken cancellationToken = default);
     Task<ApplicationUser?> FindByLoginAsync(string provider, string providerKey, CancellationToken cancellationToken = default);
     Task<(bool Succeeded, IEnumerable<string> Errors)> AddLoginAsync(ApplicationUser user, string provider, string providerKey, string? displayName, string? avatarUrl);
+    Task<(bool Succeeded, IEnumerable<string> Errors)> UpdateAsync(ApplicationUser user, CancellationToken cancellationToken = default);
 }
