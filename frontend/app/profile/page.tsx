@@ -141,6 +141,11 @@ function ProfileContent() {
               <UserIcon className="w-12 h-12 text-[#8A817C]" />
               <h2 className="font-serif text-xl font-bold">Hồ sơ không tồn tại</h2>
               <p className="text-xs text-[#8A817C]">{profileError.message}</p>
+              <div className="mt-2">
+                <Button variant="primary" size="md" onClick={handleRetry}>
+                  Thử lại
+                </Button>
+              </div>
             </div>
           </div>
         </div>
