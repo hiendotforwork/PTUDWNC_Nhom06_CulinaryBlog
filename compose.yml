@@ -61,6 +61,8 @@ services:
       Jwt__Secret: ${JWT_SECRET:-CulinaryBlogDockerDevelopmentSecretKey2026AtLeast32Characters}
       Jwt__Issuer: CulinaryBlog
       Jwt__Audience: CulinaryBlogApp
+      Authentication__Google__ClientId: ${GOOGLE_CLIENT_ID}
+      Authentication__Google__ClientSecret: ${GOOGLE_CLIENT_SECRET}
     ports:
       - "5058:8080"
     volumes:
