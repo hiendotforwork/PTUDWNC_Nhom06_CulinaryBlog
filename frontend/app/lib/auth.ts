@@ -56,10 +56,13 @@ export function getStoredUser(): (AuthUser & { createdAt: string }) | null {
   }
 }
 
-export function setStoredUser(user: AuthUser): void {
+export function setStoredUser(user: AuthUser & { createdAt?: string }): void {
   if (typeof window === "undefined") return;
-  // Add createdAt since backend doesn't return it
-  const userWithTimestamp = { ...user, createdAt: new Date().toISOString() };
+  // Preserve supplied createdAt or fall back to current time
+  const userWithTimestamp = {
+    ...user,
+    createdAt: user.createdAt || new Date().toISOString(),
+  };
   localStorage.setItem(USER_KEY, JSON.stringify(userWithTimestamp));
   _notifyAuthChange();
 }

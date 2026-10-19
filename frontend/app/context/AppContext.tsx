@@ -29,6 +29,7 @@ import {
   uploadRecipeImage,
   deleteImageApi,
   setPrimaryImageApi,
+  updateProfileApi,
 } from "../lib/api";
 import * as auth from "../lib/auth";
 
@@ -58,7 +59,7 @@ interface AppContextType {
   ) => void;
   register: (data: { displayName: string; email: string; userName: string; password?: string }) => Promise<boolean>;
   logout: () => Promise<void>;
-  updateProfile: (data: { displayName?: string; bio?: string; avatarUrl?: string }) => void;
+  updateProfile: (data: { displayName?: string; bio?: string }) => Promise<User>;
   toasts: ToastMessage[];
   showToast: (type: ToastType, message: string, title?: string) => void;
   removeToast: (id: string) => void;
@@ -597,16 +598,35 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     void reloadRecipes();
   };
 
-  const updateProfile = (data: { displayName?: string; bio?: string; avatarUrl?: string }) => {
-    if (!currentUser) return;
-    const updated: User = {
-      ...currentUser,
-      ...(data.displayName ? { displayName: data.displayName } : {}),
-      ...(data.bio !== undefined ? { bio: data.bio } : {}),
-      ...(data.avatarUrl ? { avatarUrl: data.avatarUrl } : {}),
+  const updateProfile = async (data: { displayName?: string; bio?: string }): Promise<User> => {
+    const profile = await updateProfileApi(data);
+    const mappedUser: User = {
+      id: profile.id,
+      displayName: profile.displayName,
+      userName: profile.userName,
+      email: profile.email,
+      avatarUrl: profile.avatarUrl || DEFAULT_AVATAR,
+      bio: profile.bio || undefined,
+      roles: profile.roles,
+      role: profile.roles?.includes("Admin") ? "Admin" : "User",
+      createdAt: profile.createdAt,
     };
-    setCurrentUser(updated);
+    setCurrentUser(mappedUser);
+
+    const authUser: AuthUser & { createdAt?: string } = {
+      id: profile.id,
+      displayName: profile.displayName,
+      userName: profile.userName,
+      email: profile.email,
+      avatarUrl: profile.avatarUrl || undefined,
+      bio: profile.bio || undefined,
+      roles: profile.roles,
+      createdAt: profile.createdAt,
+    };
+    auth.setStoredUser(authUser);
+
     showToast("success", "Hồ sơ đã được cập nhật thành công!");
+    return mappedUser;
   };
 
   return (

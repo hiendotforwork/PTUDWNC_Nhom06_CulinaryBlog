@@ -182,6 +182,43 @@ export async function getCurrentUser(): Promise<UserProfileResponse> {
   return handleResponse<UserProfileResponse>(res);
 }
 
+// Chức năng: cập nhật tên hiển thị và tiểu sử qua API xác thực.
+// Input: data - displayName và bio tùy chọn. Output: UserProfileResponse đã cập nhật.
+export async function updateProfileApi(data: { displayName?: string; bio?: string }): Promise<UserProfileResponse> {
+  const payload: { displayName?: string; bio?: string } = {};
+  if (data.displayName !== undefined) payload.displayName = data.displayName;
+  if (data.bio !== undefined) payload.bio = data.bio;
+
+  const res = await authFetch(`${API_BASE}/api/v1/auth/me`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  }, true);
+  return handleResponse<UserProfileResponse>(res);
+}
+
+// Chức năng: tải ảnh đại diện lên máy chủ qua endpoint xác thực.
+// Input: file - tệp ảnh. Output: đối tượng chứa avatarUrl.
+export async function uploadAvatar(file: File): Promise<{ avatarUrl: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await authFetch(`${API_BASE}/api/v1/users/me/avatar`, {
+    method: "POST",
+    body: form,
+  }, false);
+  return handleResponse<{ avatarUrl: string }>(res);
+}
+
+// Chức năng: xóa ảnh đại diện của người dùng hiện tại.
+// Input: không có. Output: Task hoàn tất khi xóa thành công (204).
+export async function deleteAvatar(): Promise<void> {
+  const res = await authFetch(`${API_BASE}/api/v1/users/me/avatar`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    await handleResponse<never>(res);
+  }
+}
+
 // Chức năng: đổi mã độ khó từ API sang kiểu hiển thị.
 // Input: value - mã độ khó. Output: Easy, Medium hoặc Hard.
 const difficulty = (value: number): DifficultyLevel => ({ 1: "Easy", 2: "Medium", 3: "Hard", 4: "Hard" })[value] as DifficultyLevel || "Easy";
