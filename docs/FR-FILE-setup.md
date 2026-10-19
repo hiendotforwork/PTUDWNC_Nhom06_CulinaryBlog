@@ -12,7 +12,7 @@ Không dùng các khóa local này trên production.
 
     $env:MINIO_ROOT_USER = "<local-access-key>"
     $env:MINIO_ROOT_PASSWORD = "<local-secret>"
-    docker compose -f compose.storage.yml up -d
+    docker compose -f compose.storage.yml up -d --build
     docker compose -f compose.storage.yml logs minio-init
 
 minio-init phải kết thúc với exit code 0. API S3 ở http://localhost:9000,
@@ -109,3 +109,54 @@ như trên rồi chạy:
 Override compose.minio.yml đổi API sang MinIO và đợi tạo bucket xong.
 Migration RestoreRecipeSearchTrigger bổ sung trigger FTS cho baseline Docker mới;
 giữ GIN index và dữ liệu đã có. Chưa xác minh các dịch vụ thật khi máy thiếu Docker.
+
+## Issue #17: Quay returns 401 Unauthorized
+
+Compose now builds MinIO and mc from their official GitHub source using
+`docker/Minio.Dockerfile` and `docker/MinioClient.Dockerfile`. Releases are pinned
+to RELEASE.2025-04-22T22-12-26Z and RELEASE.2025-04-16T18-13-26Z respectively.
+No Quay login or MinIO image pull is needed. The first build requires Internet
+access for Go, runtime images, source archives and Go modules; later builds use cache.
+
+PowerShell (start Docker Desktop with Linux containers first):
+
+```powershell
+$env:MINIO_ROOT_USER = "culinary_admin"
+$env:MINIO_ROOT_PASSWORD = "culinary_password"
+docker compose -f compose.yml -f compose.storage.yml -f compose.minio.yml up -d --build
+if ($LASTEXITCODE -ne 0) { throw "Docker Compose failed" }
+docker compose -f compose.yml -f compose.storage.yml -f compose.minio.yml logs minio-init
+pnpm --config.pm-on-fail=ignore --dir frontend dev
+```
+
+For Bash, keep the issue's inline environment variables, add `--build` to
+`up -d`, and use `&&` to start the frontend only after Compose succeeds.
+Verify that minio-init exits with code 0 and http://localhost:9001 opens.
+Keep the existing minio-data volume; do not use `down -v` to fix image pulls.
+
+Validation: standalone storage and merged API Compose configuration pass
+`docker compose config --quiet` with local credentials. Docker images for the
+API, MinIO and mc built successfully, and minio-init exited with code 0.
+All 3 avatar integration tests and 16 live API checks passed: authentication,
+upload, public PNG read with matching bytes, database persistence after login,
+replacement, invalid MIME rejection and idempotent deletion. Both obsolete
+objects subsequently returned 404 after background cleanup.
+
+On the test machine Windows reserved port 55432. A local Compose override
+replaced the PostgreSQL host port with 25432; the internal port remained 5432.
+If you encounter the same bind error, use an available host port with a local
+override (Docker Compose supports `!override`):
+
+```yaml
+services:
+  postgres:
+    ports: !override
+      - "127.0.0.1:25432:5432"
+```
+
+Append `-f <local-override.yml>` after the other Compose files when starting
+this stack. Existing volumes are preserved.
+
+The frontend profile page currently changes avatar state locally and does not
+call the avatar upload API. The checks above cover the backend with real MinIO;
+frontend upload integration is separate from the registry failure in issue #17.

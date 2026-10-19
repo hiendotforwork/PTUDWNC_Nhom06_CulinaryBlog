@@ -1,6 +1,8 @@
 services:
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    build:
+      context: .
+      dockerfile: docker/Minio.Dockerfile
     command: server /data --console-address ":9001"
     ports:
       - "127.0.0.1:9000:9000"
@@ -11,7 +13,9 @@ services:
     volumes:
       - minio-data:/data
   minio-init:
-    image: quay.io/minio/mc:latest
+    build:
+      context: .
+      dockerfile: docker/MinioClient.Dockerfile
     depends_on:
       - minio
     environment:
