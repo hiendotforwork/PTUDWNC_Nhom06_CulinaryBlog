@@ -603,5 +603,32 @@ public class AuthControllerTests : IClassFixture<CustomWebApplicationFactory>
         var response = await _client.SendAsync(request);
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
+
+    [Fact]
+    public async Task PatchCurrentUser_WhenUserDoesNotExist_Returns404()
+    {
+        var registerRequest = CreateUniqueRegisterRequest("patch_deleted");
+        var regResponse = await _client.PostAsJsonAsync("/api/v1/auth/register", registerRequest);
+        regResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+        var regContent = await regResponse.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            var user = await userManager.FindByEmailAsync(registerRequest.Email);
+            user.Should().NotBeNull();
+            var deleteResult = await userManager.DeleteAsync(user!);
+            deleteResult.Succeeded.Should().BeTrue();
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Patch, "/api/v1/auth/me")
+        {
+            Content = JsonContent.Create(new { displayName = "New Name", bio = "New Bio" })
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", regContent!.AccessToken);
+
+        var response = await _client.SendAsync(request);
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
 }
 

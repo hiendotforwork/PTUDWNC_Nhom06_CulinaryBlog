@@ -24,7 +24,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5058";
 const API_ORIGIN = API_BASE.replace(/\/$/, "");
 
 // Chuyển URL ảnh tương đối của API thành URL đầy đủ để frontend ở cổng 3000 tải được ảnh.
-function mediaUrl(url?: string): string {
+export function mediaUrl(url?: string | null): string {
   if (!url) return "";
   return url.startsWith("/") ? `${API_ORIGIN}${url}` : url;
 }
@@ -83,11 +83,26 @@ export type ImageResponse = ApiImage & { orderIndex: number; rowVersion: string 
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
+    const parsedErrors: Array<{ field: string; message: string }> | undefined = Array.isArray(errorData.errors)
+      ? errorData.errors.map((e: { propertyName?: string; field?: string; errorMessage?: string; message?: string }) => ({
+          field: e.propertyName || e.field || "",
+          message: e.errorMessage || e.message || "",
+        }))
+      : errorData.errors && typeof errorData.errors === "object"
+        ? Object.entries(errorData.errors as Record<string, unknown>).flatMap(([field, msgs]) =>
+            Array.isArray(msgs)
+              ? msgs.map((msg) => ({ field, message: String(msg) }))
+              : [{ field, message: String(msgs) }]
+          )
+        : undefined;
+
+    const fieldMessage = parsedErrors?.[0]?.message;
+
     const error: ApiError = {
       statusCode: res.status,
       errorCode: errorData.extensions?.code || errorData.errorCode,
-      message: errorData.detail || errorData.title || errorData.message || (res.status === 500 ? "Lỗi server, thử lại sau." : "Lỗi không xác định từ máy chủ."),
-      errors: errorData.errors,
+      message: fieldMessage || errorData.detail || errorData.title || errorData.message || (res.status === 500 ? "Lỗi server, thử lại sau." : "Lỗi không xác định từ máy chủ."),
+      errors: parsedErrors,
       extensions: errorData.extensions,
     };
     throw error;

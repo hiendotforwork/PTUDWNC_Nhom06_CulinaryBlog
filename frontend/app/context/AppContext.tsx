@@ -30,6 +30,7 @@ import {
   deleteImageApi,
   setPrimaryImageApi,
   updateProfileApi,
+  mediaUrl,
 } from "../lib/api";
 import * as auth from "../lib/auth";
 
@@ -165,7 +166,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           displayName: stored.displayName,
           userName: stored.userName,
           email: stored.email,
-          avatarUrl: stored.avatarUrl || DEFAULT_AVATAR,
+          avatarUrl: (stored.avatarUrl ? mediaUrl(stored.avatarUrl) : undefined) || DEFAULT_AVATAR,
           bio: stored.bio,
           roles: stored.roles,
           role: stored.roles?.includes("Admin") ? "Admin" : "User",
@@ -414,7 +415,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         displayName: response.user.displayName,
         userName: response.user.userName,
         email: response.user.email,
-        avatarUrl: response.user.avatarUrl || DEFAULT_AVATAR,
+        avatarUrl: (response.user.avatarUrl ? mediaUrl(response.user.avatarUrl) : undefined) || DEFAULT_AVATAR,
         bio: response.user.bio,
         roles: response.user.roles,
         role: response.user.roles?.includes("Admin") ? "Admin" : "User",
@@ -506,7 +507,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         displayName: response.user.displayName,
         userName: response.user.userName,
         email: response.user.email,
-        avatarUrl: response.user.avatarUrl || DEFAULT_AVATAR,
+        avatarUrl: (response.user.avatarUrl ? mediaUrl(response.user.avatarUrl) : undefined) || DEFAULT_AVATAR,
         bio: response.user.bio,
         roles: response.user.roles,
         role: response.user.roles?.includes("Admin") ? "Admin" : "User",
@@ -587,7 +588,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       displayName: authUser.displayName,
       userName: authUser.userName,
       email: authUser.email,
-      avatarUrl: authUser.avatarUrl || DEFAULT_AVATAR,
+      avatarUrl: (authUser.avatarUrl ? mediaUrl(authUser.avatarUrl) : undefined) || DEFAULT_AVATAR,
       bio: authUser.bio,
       roles: authUser.roles,
       role: authUser.roles?.includes("Admin") ? "Admin" : "User",
@@ -600,12 +601,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const updateProfile = async (data: { displayName?: string; bio?: string }): Promise<User> => {
     const profile = await updateProfileApi(data);
+    const resolvedAvatar = (profile.avatarUrl ? mediaUrl(profile.avatarUrl) : undefined) || DEFAULT_AVATAR;
     const mappedUser: User = {
       id: profile.id,
       displayName: profile.displayName,
       userName: profile.userName,
       email: profile.email,
-      avatarUrl: profile.avatarUrl || DEFAULT_AVATAR,
+      avatarUrl: resolvedAvatar,
       bio: profile.bio || undefined,
       roles: profile.roles,
       role: profile.roles?.includes("Admin") ? "Admin" : "User",
@@ -618,7 +620,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       displayName: profile.displayName,
       userName: profile.userName,
       email: profile.email,
-      avatarUrl: profile.avatarUrl || undefined,
+      avatarUrl: resolvedAvatar,
       bio: profile.bio || undefined,
       roles: profile.roles,
       createdAt: profile.createdAt,

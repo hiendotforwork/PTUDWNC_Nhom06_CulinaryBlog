@@ -19,7 +19,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useApp, DEFAULT_AVATAR } from "../context/AppContext";
-import { getCurrentUser, uploadAvatar, deleteAvatar } from "../lib/api";
+import { getCurrentUser, uploadAvatar, deleteAvatar, mediaUrl } from "../lib/api";
 import * as auth from "../lib/auth";
 import { User } from "../lib/types";
 import { Input, Textarea } from "../components/ui/Input";
@@ -55,7 +55,7 @@ function ProfileContent() {
           displayName: profile.displayName,
           userName: profile.userName,
           email: profile.email,
-          avatarUrl: profile.avatarUrl || DEFAULT_AVATAR,
+          avatarUrl: (profile.avatarUrl ? mediaUrl(profile.avatarUrl) : undefined) || DEFAULT_AVATAR,
           bio: profile.bio || undefined,
           roles: profile.roles,
           role: profile.roles.includes("Admin") ? "Admin" : "User",
@@ -232,7 +232,8 @@ function ProfileContent() {
 
     setIsUploadingAvatar(true);
     try {
-      const { avatarUrl: newAvatarUrl } = await uploadAvatar(file);
+      const { avatarUrl: rawAvatarUrl } = await uploadAvatar(file);
+      const newAvatarUrl = mediaUrl(rawAvatarUrl) || DEFAULT_AVATAR;
 
       if (currentUser) {
         const updatedUser: User = {
