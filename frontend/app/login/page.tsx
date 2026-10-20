@@ -7,6 +7,7 @@ import { ChefHat, Lock, Mail, ArrowRight } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { Input } from "../components/ui/Input";
 import { Button } from "../components/ui/Button";
+import { resendEmailConfirmation } from "../lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -16,6 +17,9 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [unconfirmedEmail, setUnconfirmedEmail] = useState<string | null>(null);
+  const [isResending, setIsResending] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,13 +41,43 @@ export default function LoginPage() {
     }
 
     setErrors({});
+    setUnconfirmedEmail(null);
     setIsLoading(true);
 
-    const success = await login(email, password);
-    setIsLoading(false);
+    try {
+      const success = await login(email, password);
+      if (success) {
+        router.push("/");
+      }
+    } catch (err: unknown) {
+      if ((err as { errorCode?: string }).errorCode === "EMAIL_NOT_CONFIRMED") {
+        setUnconfirmedEmail(email);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-    if (success) {
-      router.push("/");
+  const handleResendConfirmation = async () => {
+    if (!unconfirmedEmail || resendCooldown > 0) return;
+    setIsResending(true);
+    try {
+      await resendEmailConfirmation(unconfirmedEmail);
+      showToast("success", "Email xác nhận mới đã được gửi!");
+      setResendCooldown(60);
+      const timer = setInterval(() => {
+        setResendCooldown((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } catch {
+      showToast("error", "Không thể gửi lại email xác nhận. Vui lòng thử lại sau.");
+    } finally {
+      setIsResending(false);
     }
   };
 
@@ -72,6 +106,25 @@ export default function LoginPage() {
 
           {/* Form */}
           <form onSubmit={handleLogin} className="flex flex-col gap-4">
+            {unconfirmedEmail && (
+              <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-left flex flex-col gap-2">
+                <p className="text-xs sm:text-sm text-amber-800 dark:text-amber-200 font-medium">
+                  Tài khoản <strong>{unconfirmedEmail}</strong> chưa được xác nhận email. Vui lòng kiểm tra hộp thư hoặc nhấn nút bên dưới để nhận liên kết mới.
+                </p>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  isLoading={isResending}
+                  disabled={isResending || resendCooldown > 0}
+                  onClick={handleResendConfirmation}
+                  className="self-start text-xs"
+                >
+                  {resendCooldown > 0 ? `Gửi lại sau ${resendCooldown}s` : "Gửi lại email xác nhận"}
+                </Button>
+              </div>
+            )}
+
             <Input
               label="Địa chỉ Email"
               type="email"

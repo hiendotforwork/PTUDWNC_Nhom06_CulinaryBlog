@@ -124,6 +124,20 @@ export interface RegisterRequest {
   password: string;
 }
 
+export interface RegistrationPendingResponse {
+  email: string;
+  emailConfirmationRequired: boolean;
+}
+
+export interface ConfirmEmailRequest {
+  userId: string;
+  token: string;
+}
+
+export interface ResendEmailConfirmationRequest {
+  email: string;
+}
+
 export interface LoginRequest {
   email: string;
   password: string;

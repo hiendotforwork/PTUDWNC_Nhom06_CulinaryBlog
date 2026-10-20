@@ -18,6 +18,19 @@ const nextConfig: NextConfig = {
       { protocol: "http", hostname: "127.0.0.1", port: "5058" },
     ],
   },
+  async headers() {
+    return [
+      {
+        source: "/verify-email",
+        headers: [
+          {
+            key: "Referrer-Policy",
+            value: "no-referrer",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

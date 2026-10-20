@@ -5,7 +5,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
-import { Recipe, User, ToastMessage, ToastType, Category, AuthResponse, AuthUser } from "../lib/types";
+import { Recipe, User, ToastMessage, ToastType, Category, AuthUser } from "../lib/types";
 import {
   register as apiRegister,
   login as apiLogin,
@@ -469,6 +469,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         return false;
       }
 
+      // Email not confirmed (403)
+      if (apiError.statusCode === 403 || apiError.errorCode === "EMAIL_NOT_CONFIRMED") {
+        showToast("warning", "Tài khoản chưa được kích hoạt email. Vui lòng kiểm tra hộp thư hoặc nhấn gửi lại.");
+        const unconfirmedError = new Error("EMAIL_NOT_CONFIRMED");
+        (unconfirmedError as unknown as { errorCode: string }).errorCode = "EMAIL_NOT_CONFIRMED";
+        throw unconfirmedError;
+      }
+
       // Invalid credentials (401) - generic message for security
       if (apiError.statusCode === 401 || apiError.errorCode === "AUTH_INVALID_CREDENTIALS") {
         showToast("error", "Email hoặc mật khẩu không đúng.");
@@ -489,34 +497,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const register = async (data: { displayName: string; email: string; userName: string; password?: string }) => {
     try {
-      const response: AuthResponse = await apiRegister({
+      await apiRegister({
         email: data.email,
         userName: data.userName,
         displayName: data.displayName,
         password: data.password || "",
       });
 
-      // Store tokens and user
-      auth.setToken(response.accessToken);
-      auth.setRefreshToken(response.refreshToken);
-      auth.setStoredUser(response.user);
-
-      // Convert AuthUser to User for AppContext
-      const user: User = {
-        id: response.user.id,
-        displayName: response.user.displayName,
-        userName: response.user.userName,
-        email: response.user.email,
-        avatarUrl: (response.user.avatarUrl ? mediaUrl(response.user.avatarUrl) : undefined) || DEFAULT_AVATAR,
-        bio: response.user.bio,
-        roles: response.user.roles,
-        role: response.user.roles?.includes("Admin") ? "Admin" : "User",
-        createdAt: new Date().toISOString(),
-      };
-
-      setCurrentUser(user);
-      await reloadRecipes();
-      showToast("success", `Đăng ký thành công! Chào mừng ${user.displayName}`);
+      // Do not store tokens or current user as email confirmation is pending
+      showToast("success", "Đăng ký thành công! Vui lòng kiểm tra email để kích hoạt tài khoản.");
       return true;
     } catch (error: unknown) {
       // Handle network errors (fetch throws TypeError)

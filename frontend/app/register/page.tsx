@@ -2,14 +2,13 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { ChefHat, User, Mail, AtSign, Lock, ArrowRight } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { Input } from "../components/ui/Input";
 import { Button } from "../components/ui/Button";
+import { resendEmailConfirmation } from "../lib/api";
 
 export default function RegisterPage() {
-  const router = useRouter();
   const { register, showToast } = useApp();
 
   const [displayName, setDisplayName] = useState("");
@@ -19,6 +18,9 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
+  const [isResending, setIsResending] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,7 +72,7 @@ export default function RegisterPage() {
 
     try {
       await register({ displayName, email, userName, password });
-      router.push("/");
+      setRegisteredEmail(email);
     } catch (err: unknown) {
       const error = err as { fieldErrors?: Record<string, string>; field?: string; message?: string };
       if (error.fieldErrors && Object.keys(error.fieldErrors).length > 0) {
@@ -83,11 +85,85 @@ export default function RegisterPage() {
     }
   };
 
+  const handleResend = async () => {
+    if (!registeredEmail || resendCooldown > 0) return;
+    setIsResending(true);
+    try {
+      await resendEmailConfirmation(registeredEmail);
+      showToast("success", "Email xác nhận mới đã được gửi!");
+      setResendCooldown(60);
+      const timer = setInterval(() => {
+        setResendCooldown((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } catch {
+      showToast("error", "Không thể gửi lại email xác nhận. Vui lòng thử lại sau.");
+    } finally {
+      setIsResending(false);
+    }
+  };
+
   const handleGoogleSignup = () => {
     const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5058";
     const returnUrl = encodeURIComponent("/");
     window.location.href = `${apiBase}/api/v1/auth/google-signin?returnUrl=${returnUrl}`;
   };
+
+  if (registeredEmail) {
+    return (
+      <div className="min-h-[85dvh] flex items-center justify-center px-4 py-12 sm:px-6">
+        <div className="w-full max-w-md double-bezel">
+          <div className="double-bezel-inner p-8 sm:p-10 flex flex-col gap-6 text-center items-center">
+            <div className="w-14 h-14 rounded-2xl bg-[#E0AFA0] text-[#60413A] flex items-center justify-center shadow-inner">
+              <Mail className="w-7 h-7" />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <h1 className="font-serif text-2xl sm:text-3xl font-bold text-[#463F3A] dark:text-[#F5F3EF]">
+                Kiểm tra email của bạn
+              </h1>
+              <p className="text-xs sm:text-sm text-[#8A817C] dark:text-[#A8A29E] leading-relaxed">
+                Chúng tôi đã gửi liên kết kích hoạt tài khoản đến địa chỉ:
+              </p>
+              <p className="font-semibold text-sm sm:text-base text-[#463F3A] dark:text-[#F5F3EF] bg-[#F5F3EF] dark:bg-[#2A2624] py-2 px-3 rounded-xl border border-[#DCD8D2] dark:border-[#3D3934]">
+                {registeredEmail}
+              </p>
+              <p className="text-xs text-[#8A817C] dark:text-[#A8A29E] mt-1">
+                Vui lòng mở email và nhấn vào liên kết xác nhận để kích hoạt tài khoản. Liên kết có hiệu lực trong 24 giờ.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3 w-full">
+              <Button
+                type="button"
+                variant="secondary"
+                size="md"
+                isLoading={isResending}
+                disabled={isResending || resendCooldown > 0}
+                onClick={handleResend}
+                className="w-full"
+              >
+                {resendCooldown > 0
+                  ? `Gửi lại sau ${resendCooldown}s`
+                  : "Gửi lại email xác nhận"}
+              </Button>
+
+              <Link href="/login" className="w-full">
+                <Button variant="primary" size="md" className="w-full">
+                  Quay lại đăng nhập
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[85dvh] flex items-center justify-center px-4 py-12 sm:px-6">

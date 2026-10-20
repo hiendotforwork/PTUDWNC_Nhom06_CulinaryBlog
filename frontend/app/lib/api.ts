@@ -16,6 +16,7 @@ import {
   RecipeStatus,
   RecipeStep,
   RegisterRequest,
+  RegistrationPendingResponse,
   UserProfileResponse,
 } from "./types";
 import { getToken, refreshAccessToken, clearAuth } from "./auth";
@@ -111,14 +112,38 @@ async function handleResponse<T>(res: Response): Promise<T> {
 }
 
 // Chức năng: gửi yêu cầu đăng ký tài khoản.
-// Input: data - thông tin đăng ký. Output: token và thông tin người dùng.
-export async function register(data: RegisterRequest): Promise<AuthResponse> {
+// Input: data - thông tin đăng ký. Output: trạng thái chờ xác thực email.
+export async function register(data: RegisterRequest): Promise<RegistrationPendingResponse> {
   const res = await fetch(`${API_BASE}/api/v1/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
+  return handleResponse<RegistrationPendingResponse>(res);
+}
+
+// Chức năng: gửi yêu cầu xác nhận email tài khoản.
+// Input: userId, token. Output: token phiên đăng nhập và thông tin người dùng.
+export async function confirmEmail(userId: string, token: string): Promise<AuthResponse> {
+  const res = await fetch(`${API_BASE}/api/v1/auth/email/confirm`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId, token }),
+  });
   return handleResponse<AuthResponse>(res);
+}
+
+// Chức năng: gửi yêu cầu gửi lại email xác nhận tài khoản.
+// Input: email. Output: Promise<void>.
+export async function resendEmailConfirmation(email: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/v1/auth/email/resend`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  if (!res.ok) {
+    await handleResponse<void>(res);
+  }
 }
 
 // Chức năng: gửi yêu cầu đăng nhập tài khoản.
