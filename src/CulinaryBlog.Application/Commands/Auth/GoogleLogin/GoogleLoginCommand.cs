@@ -8,5 +8,6 @@ public record GoogleLoginCommand(
     string ProviderKey,
     string Email,
     string DisplayName,
-    string? AvatarUrl
+    string? AvatarUrl,
+    bool EmailVerified
 ) : IRequest<AuthResponse>;

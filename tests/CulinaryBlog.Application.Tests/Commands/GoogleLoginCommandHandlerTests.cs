@@ -31,19 +31,23 @@ public class GoogleLoginCommandHandlerTests
         );
     }
 
-    private static GoogleLoginCommand CreateValidCommand() =>
-        new("Google", "google-sub-123", "chef@example.com", "Chef John", "https://avatar.url/john.png");
+    private static GoogleLoginCommand CreateValidCommand(bool emailVerified = true) =>
+        new("Google", "google-sub-123", "chef@example.com", "Chef John", "https://avatar.url/john.png", emailVerified);
 
     [Fact]
-    public async Task Handle_WhenUserExistsWithLogin_ReturnsAuthResponseAndRotatesTokens()
+    public async Task Handle_WhenUserExistsWithLogin_AndEmailVerified_ReturnsAuthResponseAndEnsuresEmailConfirmed()
     {
         // Arrange
-        var command = CreateValidCommand();
+        var command = CreateValidCommand(emailVerified: true);
         var existingUser = ApplicationUser.Create(command.DisplayName, command.Email, "chef_john");
+        existingUser.EmailConfirmed = false;
+
         _userRepositoryMock.Setup(r => r.FindByLoginAsync(command.Provider, command.ProviderKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(existingUser);
         _userRepositoryMock.Setup(r => r.GetRolesAsync(existingUser))
             .ReturnsAsync(new List<string> { "Author" });
+        _userRepositoryMock.Setup(r => r.UpdateAsync(existingUser, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((true, Enumerable.Empty<string>()));
 
         _tokenServiceMock.Setup(t => t.GenerateAccessToken(existingUser, It.IsAny<List<string>>()))
             .Returns("access-token-123");
@@ -59,18 +63,22 @@ public class GoogleLoginCommandHandlerTests
         result.RefreshToken.Should().Be("refresh-token-123");
         result.User.Email.Should().Be(command.Email);
         result.User.Roles.Should().Contain("Author");
+        existingUser.EmailConfirmed.Should().BeTrue();
 
+        _userRepositoryMock.Verify(r => r.UpdateAsync(existingUser, It.IsAny<CancellationToken>()), Times.Once);
         _refreshTokenRepositoryMock.Verify(r => r.RevokeByUserIdAsync(existingUser.Id, It.IsAny<CancellationToken>()), Times.Once);
         _refreshTokenRepositoryMock.Verify(r => r.AddAsync(It.IsAny<RefreshToken>(), It.IsAny<CancellationToken>()), Times.Once);
         _transactionMock.Verify(t => t.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task Handle_WhenUserExistsWithEmail_LinksLoginAndReturnsAuthResponse()
+    public async Task Handle_WhenUserExistsWithEmail_AndEmailVerified_LinksLoginAndEnsuresEmailConfirmed()
     {
         // Arrange
-        var command = CreateValidCommand();
+        var command = CreateValidCommand(emailVerified: true);
         var existingUser = ApplicationUser.Create(command.DisplayName, command.Email, "chef_john");
+        existingUser.EmailConfirmed = false;
+
         _userRepositoryMock.Setup(r => r.FindByLoginAsync(command.Provider, command.ProviderKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync((ApplicationUser?)null);
         _userRepositoryMock.Setup(r => r.FindByEmailAsync(command.Email, It.IsAny<CancellationToken>()))
@@ -79,6 +87,8 @@ public class GoogleLoginCommandHandlerTests
             .ReturnsAsync((true, Enumerable.Empty<string>()));
         _userRepositoryMock.Setup(r => r.GetRolesAsync(existingUser))
             .ReturnsAsync(new List<string> { "Author" });
+        _userRepositoryMock.Setup(r => r.UpdateAsync(existingUser, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((true, Enumerable.Empty<string>()));
 
         _tokenServiceMock.Setup(t => t.GenerateAccessToken(existingUser, It.IsAny<List<string>>()))
             .Returns("access-token-123");
@@ -90,14 +100,16 @@ public class GoogleLoginCommandHandlerTests
 
         // Assert
         result.Should().NotBeNull();
+        existingUser.EmailConfirmed.Should().BeTrue();
         _userRepositoryMock.Verify(r => r.AddLoginAsync(existingUser, command.Provider, command.ProviderKey, command.DisplayName, command.AvatarUrl), Times.Once);
+        _userRepositoryMock.Verify(r => r.UpdateAsync(existingUser, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task Handle_WhenNewUser_CreatesUserWithAuthorRoleAndLinksLogin()
+    public async Task Handle_WhenNewUser_AndEmailVerified_CreatesUserWithEmailConfirmedTrue()
     {
         // Arrange
-        var command = CreateValidCommand();
+        var command = CreateValidCommand(emailVerified: true);
         _userRepositoryMock.Setup(r => r.FindByLoginAsync(command.Provider, command.ProviderKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync((ApplicationUser?)null);
         _userRepositoryMock.Setup(r => r.FindByEmailAsync(command.Email, It.IsAny<CancellationToken>()))
@@ -121,16 +133,76 @@ public class GoogleLoginCommandHandlerTests
 
         // Assert
         result.Should().NotBeNull();
-        _userRepositoryMock.Verify(r => r.CreateAsync(It.Is<ApplicationUser>(u => u.Email == command.Email)), Times.Once);
+        _userRepositoryMock.Verify(r => r.CreateAsync(It.Is<ApplicationUser>(u => u.Email == command.Email && u.EmailConfirmed == true)), Times.Once);
         _userRepositoryMock.Verify(r => r.AddToRoleAsync(It.IsAny<ApplicationUser>(), "Author"), Times.Once);
         _userRepositoryMock.Verify(r => r.AddLoginAsync(It.IsAny<ApplicationUser>(), command.Provider, command.ProviderKey, command.DisplayName, command.AvatarUrl), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_WhenEmailNotVerified_ForNewUser_ThrowsAuthExceptionAndDoesNotCreateUser()
+    {
+        // Arrange
+        var command = CreateValidCommand(emailVerified: false);
+        _userRepositoryMock.Setup(r => r.FindByLoginAsync(command.Provider, command.ProviderKey, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ApplicationUser?)null);
+        _userRepositoryMock.Setup(r => r.FindByEmailAsync(command.Email, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ApplicationUser?)null);
+
+        // Act
+        var act = () => _handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        var ex = await act.Should().ThrowAsync<AuthException>();
+        ex.Which.StatusCode.Should().Be(401);
+
+        _userRepositoryMock.Verify(r => r.CreateAsync(It.IsAny<ApplicationUser>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_WhenEmailNotVerified_ForExistingEmail_ThrowsAuthExceptionAndDoesNotLink()
+    {
+        // Arrange
+        var command = CreateValidCommand(emailVerified: false);
+        var existingUser = ApplicationUser.Create(command.DisplayName, command.Email, "chef_john");
+
+        _userRepositoryMock.Setup(r => r.FindByLoginAsync(command.Provider, command.ProviderKey, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ApplicationUser?)null);
+        _userRepositoryMock.Setup(r => r.FindByEmailAsync(command.Email, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existingUser);
+
+        // Act
+        var act = () => _handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        var ex = await act.Should().ThrowAsync<AuthException>();
+        ex.Which.StatusCode.Should().Be(401);
+
+        _userRepositoryMock.Verify(r => r.AddLoginAsync(It.IsAny<ApplicationUser>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_WhenEmailNotVerified_ForExistingLogin_ThrowsAuthException()
+    {
+        // Arrange
+        var command = CreateValidCommand(emailVerified: false);
+        var existingUser = ApplicationUser.Create(command.DisplayName, command.Email, "chef_john");
+
+        _userRepositoryMock.Setup(r => r.FindByLoginAsync(command.Provider, command.ProviderKey, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existingUser);
+
+        // Act
+        var act = () => _handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        var ex = await act.Should().ThrowAsync<AuthException>();
+        ex.Which.StatusCode.Should().Be(401);
     }
 
     [Fact]
     public async Task Handle_WhenUserIsInactive_ThrowsAccountLocked()
     {
         // Arrange
-        var command = CreateValidCommand();
+        var command = CreateValidCommand(emailVerified: true);
         var lockedUser = ApplicationUser.Create(command.DisplayName, command.Email, "chef_john");
         lockedUser.IsActive = false;
 
@@ -150,7 +222,7 @@ public class GoogleLoginCommandHandlerTests
     public async Task Handle_WhenNewUserHasDuplicateUserName_GeneratesUniqueUserNameAndSucceeds()
     {
         // Arrange
-        var command = CreateValidCommand();
+        var command = CreateValidCommand(emailVerified: true);
         _userRepositoryMock.Setup(r => r.FindByLoginAsync(command.Provider, command.ProviderKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync((ApplicationUser?)null);
         _userRepositoryMock.Setup(r => r.FindByEmailAsync(command.Email, It.IsAny<CancellationToken>()))

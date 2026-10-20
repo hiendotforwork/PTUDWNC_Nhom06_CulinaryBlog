@@ -203,9 +203,12 @@ public class AuthController : ControllerBase
             var avatarUrl = claims?.FirstOrDefault(c => c.Type == "picture")?.Value;
             var providerKey = claims?.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
 
-            if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(providerKey))
+            var emailVerifiedClaim = claims?.FirstOrDefault(c => c.Type == "email_verified")?.Value;
+            var emailVerified = string.Equals(emailVerifiedClaim, "true", StringComparison.OrdinalIgnoreCase);
+
+            if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(providerKey) || !emailVerified)
             {
-                return Redirect($"{frontendBase}/login?error={Uri.EscapeDataString("Không thể lấy thông tin từ Google.")}");
+                return Redirect($"{frontendBase}/login?error={Uri.EscapeDataString("Không thể lấy thông tin xác thực từ Google hoặc email chưa được xác thực.")}");
             }
 
             var command = new GoogleLoginCommand(
@@ -213,7 +216,8 @@ public class AuthController : ControllerBase
                 ProviderKey: providerKey,
                 Email: email,
                 DisplayName: displayName,
-                AvatarUrl: avatarUrl
+                AvatarUrl: avatarUrl,
+                EmailVerified: emailVerified
             );
 
             var authResponse = await _mediator.Send(command, cancellationToken);

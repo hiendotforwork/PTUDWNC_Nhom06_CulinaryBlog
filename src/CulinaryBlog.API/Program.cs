@@ -176,6 +176,12 @@ builder.Services.AddAuthentication(options =>
     };
     options.Events.OnCreatingTicket = context =>
     {
+        if (context.User.TryGetProperty("email_verified", out var emailVerifiedProp))
+        {
+            var isVerified = emailVerifiedProp.ValueKind == JsonValueKind.True
+                || (emailVerifiedProp.ValueKind == JsonValueKind.String && bool.TryParse(emailVerifiedProp.GetString(), out var b) && b);
+            context.Identity?.AddClaim(new Claim("email_verified", isVerified ? "true" : "false"));
+        }
         return Task.CompletedTask;
     };
 });

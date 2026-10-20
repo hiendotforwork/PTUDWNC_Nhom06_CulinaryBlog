@@ -28,16 +28,36 @@ public class GoogleLoginCommandHandler : IRequestHandler<GoogleLoginCommand, Aut
 
     public async Task<AuthResponse> Handle(GoogleLoginCommand request, CancellationToken cancellationToken)
     {
+        // 0. Fail closed if provider email is not verified
+        if (!request.EmailVerified)
+        {
+            throw AuthException.InvalidCredentials();
+        }
+
         // 1. Check if user exists with this external login
         var existingUser = await _userRepository.FindByLoginAsync(request.Provider, request.ProviderKey, cancellationToken);
 
-        // 2. If not found by login, check by email
-        if (existingUser == null)
+        if (existingUser != null)
         {
+            if (!existingUser.EmailConfirmed)
+            {
+                existingUser.EmailConfirmed = true;
+                await _userRepository.UpdateAsync(existingUser, cancellationToken);
+            }
+        }
+        else
+        {
+            // 2. If not found by login, check by email
             existingUser = await _userRepository.FindByEmailAsync(request.Email, cancellationToken);
 
             if (existingUser != null)
             {
+                if (!existingUser.EmailConfirmed)
+                {
+                    existingUser.EmailConfirmed = true;
+                    await _userRepository.UpdateAsync(existingUser, cancellationToken);
+                }
+
                 // Link Google login to existing account
                 await _userRepository.AddLoginAsync(
                     existingUser,
@@ -62,6 +82,7 @@ public class GoogleLoginCommandHandler : IRequestHandler<GoogleLoginCommand, Aut
             }
 
             existingUser = ApplicationUser.Create(request.DisplayName, request.Email, userName);
+            existingUser.EmailConfirmed = true;
 
             if (!string.IsNullOrEmpty(request.AvatarUrl))
             {
