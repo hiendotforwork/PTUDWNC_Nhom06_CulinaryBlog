@@ -51,7 +51,8 @@ services:
       Email__SmtpHost: mailpit
       Email__SmtpPort: "1025"
       Email__From: noreply@culinary.local
-      Site__BaseUrl: http://localhost:3000
+      Site__BaseUrl: http://localhost:3001
+      FrontendUrl: http://localhost:3001
       Site__PublicApiUrl: http://localhost:5058
       FileStorage__Provider: Local
       ASPNETCORE_URLS: http://+:8080
@@ -67,7 +68,9 @@ services:
       - "5058:8080"
     volumes:
       - recipe-images:/app/wwwroot/uploads
+      - data-protection-keys:/root/.aspnet/DataProtection-Keys
 
 volumes:
   postgres-data:
   recipe-images:
+  data-protection-keys:

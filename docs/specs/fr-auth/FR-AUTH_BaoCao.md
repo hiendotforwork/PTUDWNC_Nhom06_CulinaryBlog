@@ -313,8 +313,9 @@ FR-AUTH (Module Xác thực và Quản lý Người dùng)
 7. Tìm user bằng `UserManager.FindByLoginAsync("Google", providerKey)`
 8. **Nếu chưa có tài khoản:** kiểm tra email → email chưa tồn tại → tạo `ApplicationUser` mới từ Google profile, gán role "Author" → `AddLoginAsync`
 9. **Nếu email đã tồn tại (đăng ký thủ công trước):** liên kết Google login → `AddLoginAsync` với tài khoản hiện có
-10. Tạo access token và refresh token, lưu vào database
-11. Trả về HTTP 200 OK với `AuthResponseDto`
+10. **Nếu provider key đã liên kết:** đồng bộ email Google đã xác minh nếu email mới chưa thuộc tài khoản khác; nếu bị trùng hoặc cập nhật thất bại thì từ chối đăng nhập, không phát session
+11. Tạo access token và refresh token, lưu vào database
+12. Trả về HTTP 200 OK với `AuthResponseDto`
 
 **Alternative Flow:**
 - **A1 – Google token không hợp lệ:** HTTP 401 Unauthorized

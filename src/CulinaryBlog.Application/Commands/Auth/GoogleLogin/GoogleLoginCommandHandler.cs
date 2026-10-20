@@ -39,10 +39,23 @@ public class GoogleLoginCommandHandler : IRequestHandler<GoogleLoginCommand, Aut
 
         if (existingUser != null)
         {
-            if (!existingUser.EmailConfirmed)
+            var providerEmail = request.Email.Trim();
+            if (!string.Equals(existingUser.Email, providerEmail, StringComparison.OrdinalIgnoreCase))
+            {
+                var emailOwner = await _userRepository.FindByEmailAsync(providerEmail, cancellationToken);
+                if (emailOwner != null && emailOwner.Id != existingUser.Id)
+                {
+                    throw AuthException.InvalidCredentials();
+                }
+
+                existingUser.Email = providerEmail;
+            }
+
+            if (!existingUser.EmailConfirmed || !string.Equals(existingUser.Email, request.Email, StringComparison.Ordinal))
             {
                 existingUser.EmailConfirmed = true;
-                await _userRepository.UpdateAsync(existingUser, cancellationToken);
+                var updateResult = await _userRepository.UpdateAsync(existingUser, cancellationToken);
+                if (!updateResult.Succeeded) throw AuthException.InvalidCredentials();
             }
         }
         else

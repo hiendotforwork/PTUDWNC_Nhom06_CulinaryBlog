@@ -618,6 +618,8 @@ public class JwtServiceTests
 
 ### 2.4. Google OAuth Tests
 
+For an already linked Google identity, also verify that a changed verified email is synchronized when unclaimed, while an email collision or failed Identity update issues no tokens.
+
 #### Test Class: GoogleLoginCommandHandlerTests
 
 ```csharp

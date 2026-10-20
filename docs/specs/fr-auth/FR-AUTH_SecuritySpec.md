@@ -298,6 +298,7 @@ To ensure unconfirmed or deleted accounts cannot access protected resources even
 - **Fail-Closed Verification:** If the user is missing, `user.IsDeleted == true`, or `user.EmailConfirmed == false`, the event executes `context.Fail("User is unconfirmed, inactive, or not found")`, terminating authentication with HTTP 401 Unauthorized.
 - **Login Gate:** Local login (`POST /api/v1/auth/login`) validates `user.EmailConfirmed` after password check and returns HTTP 403 `EMAIL_NOT_CONFIRMED` for unconfirmed accounts.
 - **Google OAuth Verification:** When linking or creating accounts via Google OAuth, the system requires Google OpenID/userinfo assertion `email_verified == true`. Only then is `EmailConfirmed` set to true without email confirmation. If false or absent, login fails closed.
+- **Changed Google Email:** For an already linked provider identity, synchronize the account email to Google's currently verified email only if no other account owns it. If another account owns it or Identity cannot persist the update, fail authentication and issue no session.
 
 ### 2.6. Email Verification Security Architecture
 
@@ -305,12 +306,13 @@ To ensure unconfirmed or deleted accounts cannot access protected resources even
    - Verification links are formatted as: `https://<frontend>/verify-email#userId=<uuid>&token=<token>`.
    - URL fragments are never sent to backend servers in HTTP request headers (`Referer`), protecting sensitive tokens from leaking into access logs or third-party referrers.
    - Frontend sets `Referrer-Policy: no-referrer` on the `/verify-email` route.
-   - Frontend immediately strips `location.hash` using `history.replaceState` before any network interaction.
+   - Frontend immediately strips `location.hash` using `history.replaceState` before any network interaction, preserving the query string for the validated local `returnUrl`.
 2. **Explicit Confirmation POST:**
    - Email verification mutates state and must never be performed via safe HTTP methods (`GET`).
    - The user must explicitly click a "Confirm Email" button on the client page, sending a `POST /api/v1/auth/email/confirm` request.
 3. **Identity Data Protection:**
    - Tokens are generated using ASP.NET Core Identity Data Protection token provider with a 24-hour expiration (`DataProtectionTokenProviderOptions.TokenLifespan = TimeSpan.FromHours(24)`).
+   - Docker persists Data Protection keys in a named volume so rebuilding the API does not invalidate links that are still within their 24-hour lifetime.
    - Generated at job execution time when sending the email, preventing premature expiration during Outbox queuing delays.
 4. **Anti-Enumeration and Cooldowns:**
    - `POST /api/v1/auth/email/resend` returns HTTP 202 Accepted regardless of whether the email exists or is already confirmed.

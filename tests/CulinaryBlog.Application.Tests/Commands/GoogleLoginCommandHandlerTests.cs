@@ -72,6 +72,57 @@ public class GoogleLoginCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_WhenLinkedGoogleEmailChanges_UpdatesEmailBeforeIssuingSession()
+    {
+        var command = CreateValidCommand();
+        var user = ApplicationUser.Create(command.DisplayName, "old@example.com", "chef_john");
+        _userRepositoryMock.Setup(r => r.FindByLoginAsync(command.Provider, command.ProviderKey, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+        _userRepositoryMock.Setup(r => r.FindByEmailAsync(command.Email, It.IsAny<CancellationToken>())).ReturnsAsync((ApplicationUser?)null);
+        _userRepositoryMock.Setup(r => r.UpdateAsync(user, It.IsAny<CancellationToken>())).ReturnsAsync((true, Enumerable.Empty<string>()));
+        _userRepositoryMock.Setup(r => r.GetRolesAsync(user)).ReturnsAsync(new List<string> { "Author" });
+        _tokenServiceMock.Setup(t => t.GenerateAccessToken(user, It.IsAny<List<string>>())).Returns("access");
+        _tokenServiceMock.Setup(t => t.GenerateRefreshToken()).Returns("refresh");
+
+        var result = await _handler.Handle(command, CancellationToken.None);
+
+        user.Email.Should().Be(command.Email);
+        user.EmailConfirmed.Should().BeTrue();
+        result.User.Email.Should().Be(command.Email);
+        _userRepositoryMock.Verify(r => r.UpdateAsync(user, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_WhenLinkedGoogleEmailBelongsToAnotherUser_RejectsWithoutSession()
+    {
+        var command = CreateValidCommand();
+        var user = ApplicationUser.Create(command.DisplayName, "old@example.com", "chef_john");
+        var owner = ApplicationUser.Create("Other", command.Email, "other_user");
+        _userRepositoryMock.Setup(r => r.FindByLoginAsync(command.Provider, command.ProviderKey, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+        _userRepositoryMock.Setup(r => r.FindByEmailAsync(command.Email, It.IsAny<CancellationToken>())).ReturnsAsync(owner);
+
+        var act = () => _handler.Handle(command, CancellationToken.None);
+
+        await act.Should().ThrowAsync<AuthException>();
+        _refreshTokenRepositoryMock.Verify(r => r.AddAsync(It.IsAny<RefreshToken>(), It.IsAny<CancellationToken>()), Times.Never);
+        _unitOfWorkMock.Verify(u => u.BeginTransactionAsync(It.IsAny<System.Data.IsolationLevel>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_WhenLinkedGoogleEmailUpdateFails_RejectsWithoutSession()
+    {
+        var command = CreateValidCommand();
+        var user = ApplicationUser.Create(command.DisplayName, "old@example.com", "chef_john");
+        _userRepositoryMock.Setup(r => r.FindByLoginAsync(command.Provider, command.ProviderKey, It.IsAny<CancellationToken>())).ReturnsAsync(user);
+        _userRepositoryMock.Setup(r => r.FindByEmailAsync(command.Email, It.IsAny<CancellationToken>())).ReturnsAsync((ApplicationUser?)null);
+        _userRepositoryMock.Setup(r => r.UpdateAsync(user, It.IsAny<CancellationToken>())).ReturnsAsync((false, new[] { "failed" }));
+
+        var act = () => _handler.Handle(command, CancellationToken.None);
+
+        await act.Should().ThrowAsync<AuthException>();
+        _refreshTokenRepositoryMock.Verify(r => r.AddAsync(It.IsAny<RefreshToken>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task Handle_WhenUserExistsWithEmail_AndEmailVerified_LinksLoginAndEnsuresEmailConfirmed()
     {
         // Arrange
@@ -208,6 +259,8 @@ public class GoogleLoginCommandHandlerTests
 
         _userRepositoryMock.Setup(r => r.FindByLoginAsync(command.Provider, command.ProviderKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(lockedUser);
+        _userRepositoryMock.Setup(r => r.UpdateAsync(lockedUser, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((true, Enumerable.Empty<string>()));
 
         // Act
         var act = () => _handler.Handle(command, CancellationToken.None);

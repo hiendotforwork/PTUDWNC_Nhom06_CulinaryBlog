@@ -65,7 +65,8 @@ Google registration and sign-in do not require a separate Culinary Blog confirma
 2. Backend derives email and provider identity from the validated provider principal and obtains the verified-email assertion from trusted Google user-info/OpenID data. Normalize the provider's assertion into a server-side boolean; never accept a client-provided email or verification flag as proof. Fail closed if the verified-email assertion is missing or false.
 3. For a new Google account, set `EmailConfirmed=true`, assign the existing default Author role, link the Google identity, issue tokens, and complete the existing callback sign-in flow. Do not send a separate verification email.
 4. For an existing account with the same email, link Google only after Google has asserted the email is verified. Then allow sign-in as a confirmed account.
-5. If Google does not assert a verified email, do not grant Author access or auto-link by email; return a safe authentication error.
+5. For an already linked Google identity whose verified email changed, update the account email and confirmation state only if the new email is not owned by another account. If the address is in use or Identity cannot persist the update, fail authentication without issuing a session.
+6. If Google does not assert a verified email, do not grant Author access or auto-link by email; return a safe authentication error.
 
 ## 4. Pages and API Contract
 
@@ -76,6 +77,7 @@ Google registration and sign-in do not require a separate Culinary Blog confirma
 - Update login UI for `EMAIL_NOT_CONFIRMED`, with a resend action.
 - Keep public Guest routes available. Do not expose Author actions as usable until signed in; backend remains the enforcement boundary.
 - Validate any return URL as a local application path before redirecting to prevent open redirects.
+- Strip the token fragment while preserving the query string, then validate `returnUrl` against the current origin before redirecting.
 
 ### API behavior
 
@@ -85,6 +87,7 @@ Names below are proposed; align them with the existing `/api/v1/auth` route conv
 |---|---|---|
 | `POST /api/v1/auth/register` | Create local pending account | `201`; pending-confirmation payload; no tokens. |
 | `POST /api/v1/auth/email/confirm` | Confirm email | Accept account identifier + token; on first success return `200` with `AuthResponse`. |
+| `POST /api/v1/auth/email/status` | Read link status | Return confirmed for an already confirmed account, matching confirm replay behavior; for a pending account require a valid identifier + token. Never change account state. |
 | `POST /api/v1/auth/email/resend` | Request another message | Generic `202` response; rate-limited. |
 | `POST /api/v1/auth/login` | Local sign-in | Existing success response for confirmed accounts; stable unconfirmed error for correct credentials on pending accounts. |
 | `POST /api/v1/auth/refresh` | Rotate session tokens | Reject if account is currently unconfirmed. |
@@ -101,6 +104,7 @@ Do not mutate account state from a `GET` endpoint. The confirmation token may ap
 
 - Reuse ASP.NET Core Identity email-confirmation token generation/validation; do not add a custom GUID token table unless implementation discovery proves Identity tokens cannot meet the requirements. Register the Identity token providers explicitly (`AddDefaultTokenProviders`) and set a 24-hour lifetime explicitly. If configuring the shared data-protection provider changes lifetimes for other token purposes, use a dedicated email-confirmation provider or document the shared effect.
 - Reuse the existing SMTP-backed email service and durable background task/job pattern. Add a verification email operation/job alongside the existing welcome email operation.
+- Rolling back the repeated-verification-task migration deletes all `email-verification` outbox rows before restoring the table-wide unique constraint; welcome and resize rows remain.
 - Use the configured public frontend base URL to form HTTPS links in production. Validate configuration at startup or fail the job clearly; never silently send a development URL in production.
 - Token generation, confirmation, resend, and failure logs must not include the raw token or full confirmation URL.
 - Put the confirmation token in the URL fragment, never the query or path; fragments are not sent to the frontend server in the page request. The verification page must use a no-referrer policy, avoid third-party resources/analytics, and remove the fragment from browser history immediately after reading it.
@@ -140,9 +144,10 @@ Do not mutate account state from a `GET` endpoint. The confirmation token may ap
 9. Guest/public routes remain accessible without a verified account.
 10. A verified Google OAuth identity can create/link a confirmed account and sign in without a separate confirmation email.
 11. Google identity without a verified-email assertion cannot create an Author session or be auto-linked by email.
-12. Raw verification tokens and tokenized links do not appear in logs.
-13. Existing local accounts are not silently trusted; they must confirm before login or any protected API access. Existing Google-linked accounts can be confirmed by a fresh validated Google sign-in with a verified-email assertion.
-14. The API contract, FR-AUTH analysis report, test plan, and affected UAT/implementation documents agree on the new behavior.
+12. A changed email from an already linked Google identity is synchronized only when unclaimed; collisions or update failures return an authentication error without tokens.
+13. Raw verification tokens and tokenized links do not appear in logs.
+14. Existing local accounts are not silently trusted; they must confirm before login or any protected API access. Existing Google-linked accounts can be confirmed by a fresh validated Google sign-in with a verified-email assertion.
+15. The API contract, FR-AUTH analysis report, test plan, and affected UAT/implementation documents agree on the new behavior.
 
 ## 9. Out of Scope
 

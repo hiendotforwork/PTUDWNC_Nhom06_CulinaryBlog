@@ -146,6 +146,27 @@ public class AuthController : ControllerBase
         return Ok(result);
     }
 
+    [HttpPost("email/status")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<IActionResult> GetEmailConfirmationStatus([FromBody] ConfirmEmailRequest request, CancellationToken cancellationToken)
+    {
+        var command = new ConfirmEmailCommand(request.UserId, request.Token);
+        if (_confirmEmailValidator is not null)
+        {
+            var validationResult = await _confirmEmailValidator.ValidateAsync(command, cancellationToken);
+            if (!validationResult.IsValid)
+            {
+                throw new ValidationException(validationResult.Errors);
+            }
+        }
+
+        var confirmed = await _mediator.Send(new GetEmailConfirmationStatusQuery(request.UserId, request.Token), cancellationToken);
+        return Ok(new { confirmed });
+    }
+
     [HttpPost("email/resend")]
     [EnableRateLimiting("ResendEmailRateLimit")]
     [AllowAnonymous]

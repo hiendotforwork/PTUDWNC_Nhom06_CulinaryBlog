@@ -1,13 +1,14 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChefHat, CheckCircle2, AlertCircle, Mail, ArrowRight, RefreshCw } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
-import { confirmEmail, resendEmailConfirmation } from "../lib/api";
+import { confirmEmail, getEmailConfirmationStatus, resendEmailConfirmation } from "../lib/api";
+import { getSafeReturnUrl } from "../lib/safeReturnUrl";
 
 type VerifyState =
   | { type: "loading" }
@@ -15,29 +16,40 @@ type VerifyState =
   | { type: "success"; displayName: string }
   | { type: "already-confirmed" }
   | { type: "invalid-or-expired" }
-  | { type: "network-error" };
-
-function getSafeReturnUrl(rawUrl: string | null): string {
-  if (!rawUrl) return "/";
-  if (rawUrl.startsWith("/") && !rawUrl.startsWith("//") && !rawUrl.includes("://")) {
-    return rawUrl;
-  }
-  return "/";
-}
+  | { type: "network-error"; userId: string; token: string; action: "check" | "confirm" };
 
 export default function VerifyEmailPage() {
   const router = useRouter();
   const { loginWithExternalToken, showToast } = useApp();
 
   const [state, setState] = useState<VerifyState>({ type: "loading" });
+  const hasReadConfirmationLink = useRef(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [resendEmail, setResendEmail] = useState("");
   const [isResending, setIsResending] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
 
+  const checkStatus = useCallback(async (userId: string, token: string) => {
+    setState({ type: "loading" });
+    try {
+      const { confirmed } = await getEmailConfirmationStatus(userId, token);
+      setState(confirmed ? { type: "already-confirmed" } : { type: "ready", userId, token });
+    } catch (err: unknown) {
+      const error = err as { statusCode?: number; errorCode?: string };
+      if (error.statusCode === 400 || error.errorCode === "EMAIL_CONFIRMATION_FAILED") {
+        setState({ type: "invalid-or-expired" });
+      } else {
+        setState({ type: "network-error", userId, token, action: "check" });
+      }
+    }
+  }, []);
+
   useEffect(() => {
     // 1. Read userId and token from location.hash (#userId=...&token=...)
     if (typeof window === "undefined") return;
+    // Strict Mode replays effects in development after the first pass strips the fragment.
+    if (hasReadConfirmationLink.current) return;
+    hasReadConfirmationLink.current = true;
 
     const hash = window.location.hash.startsWith("#")
       ? window.location.hash.slice(1)
@@ -48,21 +60,22 @@ export default function VerifyEmailPage() {
     const token = searchParams.get("token");
 
     // 2. Immediately strip sensitive token fragment from browser address bar and history
-    window.history.replaceState(null, "", window.location.pathname);
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
 
     if (userId && token) {
-      queueMicrotask(() => setState({ type: "ready", userId, token }));
+      queueMicrotask(() => void checkStatus(userId, token));
     } else {
       queueMicrotask(() => setState({ type: "invalid-or-expired" }));
     }
-  }, []);
+  }, [checkStatus]);
 
   const handleConfirm = async () => {
-    if (state.type !== "ready") return;
+    if (state.type !== "ready" && (state.type !== "network-error" || state.action !== "confirm")) return;
+    const { userId, token } = state;
 
     setIsSubmitting(true);
     try {
-      const response = await confirmEmail(state.userId, state.token);
+      const response = await confirmEmail(userId, token);
 
       // Store tokens and set current user
       loginWithExternalToken(
@@ -75,7 +88,7 @@ export default function VerifyEmailPage() {
       setState({ type: "success", displayName: response.user.displayName });
 
       // Redirect to safe return URL or home after brief delay
-      const safeReturnUrl = getSafeReturnUrl(new URLSearchParams(window.location.search).get("returnUrl"));
+      const safeReturnUrl = getSafeReturnUrl(new URLSearchParams(window.location.search).get("returnUrl"), window.location.origin);
       setTimeout(() => {
         router.push(safeReturnUrl);
       }, 1500);
@@ -86,7 +99,7 @@ export default function VerifyEmailPage() {
       } else if (error.statusCode === 400 || error.errorCode === "EMAIL_CONFIRMATION_FAILED") {
         setState({ type: "invalid-or-expired" });
       } else {
-        setState({ type: "network-error" });
+        setState({ type: "network-error", userId, token, action: "confirm" });
       }
     } finally {
       setIsSubmitting(false);
@@ -262,7 +275,13 @@ export default function VerifyEmailPage() {
                 type="button"
                 variant="secondary"
                 size="md"
-                onClick={handleConfirm}
+                onClick={() => {
+                  if (state.action === "check") {
+                    void checkStatus(state.userId, state.token);
+                  } else {
+                    void handleConfirm();
+                  }
+                }}
                 isLoading={isSubmitting}
                 className="w-full mt-2"
               >

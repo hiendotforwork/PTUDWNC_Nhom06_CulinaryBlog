@@ -33,6 +33,7 @@ info:
     - `POST /auth/login` - Login and get tokens (requires confirmed email)
     - `POST /auth/google` - Google OAuth login (email auto-confirmed if verified by Google)
     - `POST /auth/email/confirm` - Confirm email via token and get tokens
+    - `POST /auth/email/status` - Check a confirmation link without confirming it
     
     ## Rate Limiting
     Authentication endpoints are rate limited:
@@ -209,6 +210,8 @@ paths:
       3. Auth.js v5 exchanges code for tokens and verifies
       4. Frontend sends verified ID token to this endpoint
       5. Backend creates account or links to existing email
+      6. For an already linked Google identity, backend synchronizes a changed verified Google email
+         only when that email is not owned by another account; otherwise login fails without a session.
     operationId: googleLogin
     security: []
     requestBody:
@@ -309,6 +312,38 @@ paths:
 ```
 
 ---
+
+### Email Confirmation Status
+
+```yaml
+/auth/email/status:
+  post:
+    tags:
+      - Authentication
+    summary: Check email confirmation link status without changing account state
+    operationId: getEmailConfirmationStatus
+    security: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConfirmEmailRequest'
+    responses:
+      '200':
+        description: Pending account with a valid link, or an already confirmed account
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                confirmed:
+                  type: boolean
+      '400':
+        description: Invalid or expired confirmation token
+      '422':
+        $ref: '#/components/responses/ValidationError'
+```
 
 ### 2.6. Confirm Email
 

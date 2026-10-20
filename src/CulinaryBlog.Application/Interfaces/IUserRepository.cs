@@ -23,5 +23,6 @@ public interface IUserRepository
     Task<(bool Succeeded, IEnumerable<string> Errors)> AddLoginAsync(ApplicationUser user, string provider, string providerKey, string? displayName, string? avatarUrl);
     Task<(bool Succeeded, IEnumerable<string> Errors)> UpdateAsync(ApplicationUser user, CancellationToken cancellationToken = default);
     Task<string> GenerateEmailConfirmationTokenAsync(ApplicationUser user, CancellationToken cancellationToken = default);
+    Task<bool> VerifyEmailConfirmationTokenAsync(ApplicationUser user, string token, CancellationToken cancellationToken = default);
     Task<(bool Succeeded, IEnumerable<string> Errors)> ConfirmEmailAsync(ApplicationUser user, string token, CancellationToken cancellationToken = default);
 }

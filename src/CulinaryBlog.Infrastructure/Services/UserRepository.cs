@@ -143,6 +143,15 @@ public class UserRepository : IUserRepository
         return _userManager.GenerateEmailConfirmationTokenAsync(user);
     }
 
+    public Task<bool> VerifyEmailConfirmationTokenAsync(ApplicationUser user, string token, CancellationToken cancellationToken = default)
+    {
+        return _userManager.VerifyUserTokenAsync(
+            user,
+            _userManager.Options.Tokens.EmailConfirmationTokenProvider,
+            UserManager<ApplicationUser>.ConfirmEmailTokenPurpose,
+            token);
+    }
+
     public async Task<(bool Succeeded, IEnumerable<string> Errors)> ConfirmEmailAsync(ApplicationUser user, string token, CancellationToken cancellationToken = default)
     {
         var result = await _userManager.ConfirmEmailAsync(user, token);

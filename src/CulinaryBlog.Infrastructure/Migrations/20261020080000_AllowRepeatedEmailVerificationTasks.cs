@@ -21,6 +21,7 @@ public sealed class AllowRepeatedEmailVerificationTasks : Migration
 
     protected override void Down(MigrationBuilder migrationBuilder) => migrationBuilder.Sql("""
         DROP INDEX IF EXISTS culinary."IX_BackgroundTasks_DeduplicatedKinds";
+        DELETE FROM culinary."BackgroundTasks" WHERE "Kind" = 'email-verification';
         ALTER TABLE culinary."BackgroundTasks" ADD CONSTRAINT "BackgroundTasks_Kind_TargetId_key"
             UNIQUE ("Kind", "TargetId");
 

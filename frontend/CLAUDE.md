@@ -18,7 +18,7 @@ frontend/
 # Install dependencies
 pnpm install
 
-# Development server (http://localhost:3000)
+# Development server (http://localhost:3001)
 pnpm dev
 
 # Production build

@@ -133,6 +133,15 @@ export async function confirmEmail(userId: string, token: string): Promise<AuthR
   return handleResponse<AuthResponse>(res);
 }
 
+export async function getEmailConfirmationStatus(userId: string, token: string): Promise<{ confirmed: boolean }> {
+  const res = await fetch(`${API_BASE}/api/v1/auth/email/status`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId, token }),
+  });
+  return handleResponse<{ confirmed: boolean }>(res);
+}
+
 // Chức năng: gửi yêu cầu gửi lại email xác nhận tài khoản.
 // Input: email. Output: Promise<void>.
 export async function resendEmailConfirmation(email: string): Promise<void> {
