@@ -12,6 +12,7 @@ using CulinaryBlog.Application.DTOs.Auth;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Domain.Enums;
 using CulinaryBlog.Infrastructure.Data;
+using CulinaryBlog.Integration.Tests.Helpers;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -109,16 +110,15 @@ public sealed class RecipeLifecycleTests : IClassFixture<CustomWebApplicationFac
     {
         var suffix = Guid.NewGuid().ToString("N")[..8];
         var client = _factory.CreateClient();
-        var response = await client.PostAsJsonAsync("/api/v1/auth/register", new
-        {
-            email = $"{prefix}_{suffix}@culinaryblog.vn",
-            userName = $"{prefix}_{suffix}",
-            displayName = $"Chef {prefix}",
-            password = "Password123!"
-        });
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
-        var auth = await response.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions);
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth!.AccessToken);
+        var auth = await AuthTestHelpers.RegisterConfirmedUserAsync(
+            client,
+            _factory.Services,
+            new RegisterRequest(
+                Email: $"{prefix}_{suffix}@culinaryblog.vn",
+                UserName: $"{prefix}_{suffix}",
+                DisplayName: $"Chef {prefix}",
+                Password: "Password123!"));
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
         return client;
     }
 

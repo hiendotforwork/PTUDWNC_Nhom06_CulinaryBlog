@@ -47,6 +47,7 @@ public class RefreshTokenCommandHandlerTests
         var user = ApplicationUser.Create("Test User", "test@test.com", "testuser");
         user.Id = userId;
         user.IsActive = true;
+        user.EmailConfirmed = true;
 
         var refreshToken = RefreshToken.Create(userId, rawToken, daysToLive: 7);
         refreshToken.User = user;
@@ -67,6 +68,36 @@ public class RefreshTokenCommandHandlerTests
         result.AccessToken.Should().Be("new-access-token");
         result.RefreshToken.Should().Be("new-raw-token");
         _transactionMock.Verify(t => t.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_UserEmailNotConfirmed_ThrowsEmailNotConfirmed()
+    {
+        // Arrange
+        var userId = Guid.NewGuid().ToString();
+        var rawToken = "valid-refresh-token";
+        var user = ApplicationUser.Create("Test User", "test@test.com", "testuser");
+        user.Id = userId;
+        user.IsActive = true;
+        user.EmailConfirmed = false;
+
+        var refreshToken = RefreshToken.Create(userId, rawToken, daysToLive: 7);
+        refreshToken.User = user;
+
+        _refreshTokenRepoMock.Setup(x => x.GetByTokenHashAsync(It.IsAny<string>(), default))
+            .ReturnsAsync(refreshToken);
+
+        // Act
+        var act = () => _handler.Handle(new RefreshTokenCommand(rawToken), CancellationToken.None);
+
+        // Assert
+        var ex = await act.Should().ThrowAsync<AuthException>();
+        ex.Which.ErrorCode.Should().Be("EMAIL_NOT_CONFIRMED");
+        ex.Which.StatusCode.Should().Be(403);
+
+        _tokenServiceMock.Verify(x => x.GenerateRefreshToken(), Times.Never);
+        _tokenServiceMock.Verify(x => x.GenerateAccessToken(It.IsAny<ApplicationUser>(), It.IsAny<IList<string>>()), Times.Never);
+        _refreshTokenRepoMock.Verify(x => x.AddAsync(It.IsAny<RefreshToken>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

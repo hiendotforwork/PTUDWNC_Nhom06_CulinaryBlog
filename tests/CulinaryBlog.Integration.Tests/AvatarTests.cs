@@ -10,6 +10,7 @@ using CulinaryBlog.Application.Files;
 using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Infrastructure.Data;
+using CulinaryBlog.Integration.Tests.Helpers;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
@@ -31,19 +32,14 @@ public sealed class AvatarTests(CustomWebApplicationFactory factory) : IClassFix
         return form;
     }
 
-    private static async Task<AuthResponse> RegisterUser(HttpClient client)
+    private async Task<AuthResponse> RegisterUser(HttpClient client)
     {
         var email = $"avatar-{Guid.NewGuid():N}@example.com";
-        var res = await client.PostAsJsonAsync("/api/v1/auth/register", new
-        {
-            displayName = "Avatar Test User",
-            email,
-            userName = "avatar_" + Guid.NewGuid().ToString("N")[..8],
-            password = "Password123!"
-        });
-        res.EnsureSuccessStatusCode();
-        var auth = await res.Content.ReadFromJsonAsync<AuthResponse>();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth!.AccessToken);
+        var auth = await AuthTestHelpers.RegisterConfirmedUserAsync(
+            client,
+            factory.Services,
+            new RegisterRequest(email, "avatar_" + Guid.NewGuid().ToString("N")[..8], "Avatar Test User", "Password123!"));
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
         return auth;
     }
 

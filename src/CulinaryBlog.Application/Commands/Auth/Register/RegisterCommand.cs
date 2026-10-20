@@ -8,4 +8,4 @@ public record RegisterCommand(
     string UserName,
     string DisplayName,
     string Password
-) : IRequest<AuthResponse>;
+) : IRequest<RegistrationPendingResponse>;

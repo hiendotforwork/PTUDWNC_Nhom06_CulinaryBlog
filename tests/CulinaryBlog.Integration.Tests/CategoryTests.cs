@@ -7,6 +7,7 @@ using CulinaryBlog.Application.DTOs.Auth;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Domain.Enums;
 using CulinaryBlog.Infrastructure.Data;
+using CulinaryBlog.Integration.Tests.Helpers;
 using FluentAssertions;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Caching.Memory;
@@ -247,17 +248,17 @@ public sealed class CategoryTests(CustomWebApplicationFactory factory)
     {
         var suffix = Guid.NewGuid().ToString("N")[..8];
         var client = factory.CreateClient();
-        var response = await client.PostAsJsonAsync("/api/v1/auth/register", new
-        {
-            email = $"category_author_{suffix}@culinaryblog.vn",
-            userName = $"category_author_{suffix}",
-            displayName = "Category Author",
-            password = "Password123!"
-        });
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
-        var auth = await response.Content.ReadFromJsonAsync<AuthResponse>();
+        var auth = await AuthTestHelpers.RegisterConfirmedUserAsync(
+            client,
+            factory.Services,
+            new RegisterRequest(
+                Email: $"category_author_{suffix}@culinaryblog.vn",
+                UserName: $"category_author_{suffix}",
+                DisplayName: "Category Author",
+                Password: "Password123!"));
+
         client.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Bearer", auth!.AccessToken);
+            new AuthenticationHeaderValue("Bearer", auth.AccessToken);
         return (client, auth.User.Id);
     }
 

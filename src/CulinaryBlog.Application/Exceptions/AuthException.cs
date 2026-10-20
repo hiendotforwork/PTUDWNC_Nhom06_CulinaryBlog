@@ -45,4 +45,7 @@ public class AuthException : Exception
 
     public static AuthException EmailAlreadyConfirmed() =>
         new("EMAIL_ALREADY_CONFIRMED", "Địa chỉ email đã được xác nhận trước đó.", 409);
+
+    public static AuthException EmailNotConfirmed() =>
+        new("EMAIL_NOT_CONFIRMED", "Vui lòng xác nhận địa chỉ email trước khi đăng nhập.", 403);
 }

@@ -5,6 +5,7 @@ using CulinaryBlog.Application.DTOs.Auth;
 using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Infrastructure.Data;
+using CulinaryBlog.Integration.Tests.Helpers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -116,12 +117,13 @@ public sealed class SearchAndFileTests(CustomWebApplicationFactory factory) : IC
         return form;
     }
 
-    private static async Task<AuthResponse> Register(HttpClient client)
+    private async Task<AuthResponse> Register(HttpClient client)
     {
         var name = "file" + Guid.NewGuid().ToString("N")[..12];
-        var result = await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest(name + "@example.com", name, name, "Password123!"));
-        result.EnsureSuccessStatusCode();
-        var auth = (await result.Content.ReadFromJsonAsync<AuthResponse>())!;
+        var auth = await AuthTestHelpers.RegisterConfirmedUserAsync(
+            client,
+            factory.Services,
+            new RegisterRequest(name + "@example.com", name, name, "Password123!"));
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
         return auth;
     }

@@ -7,29 +7,23 @@ using CulinaryBlog.Domain.Constants;
 using CulinaryBlog.Domain.Entities;
 using MediatR;
 
-public class RegisterCommandHandler : IRequestHandler<RegisterCommand, AuthResponse>
+public class RegisterCommandHandler : IRequestHandler<RegisterCommand, RegistrationPendingResponse>
 {
     private readonly IUserRepository _userRepository;
-    private readonly ITokenService _tokenService;
-    private readonly IRefreshTokenRepository _refreshTokenRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IBackgroundTaskQueue? _backgroundTasks;
 
     public RegisterCommandHandler(
         IUserRepository userRepository,
-        ITokenService tokenService,
-        IRefreshTokenRepository refreshTokenRepository,
         IUnitOfWork unitOfWork,
         IBackgroundTaskQueue? backgroundTasks = null)
     {
         _userRepository = userRepository;
-        _tokenService = tokenService;
-        _refreshTokenRepository = refreshTokenRepository;
         _unitOfWork = unitOfWork;
         _backgroundTasks = backgroundTasks;
     }
 
-    public async Task<AuthResponse> Handle(RegisterCommand request, CancellationToken cancellationToken)
+    public async Task<RegistrationPendingResponse> Handle(RegisterCommand request, CancellationToken cancellationToken)
     {
         // 1. Check email uniqueness (early check)
         var existingEmailUser = await _userRepository.FindByEmailAsync(request.Email, cancellationToken);
@@ -45,7 +39,7 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, AuthRespo
             throw AuthConflictException.UserNameExists();
         }
 
-        // 3. Begin atomic transaction for user creation, role assignment, and token persistence
+        // 3. Begin atomic transaction for user creation and role assignment
         await using var transaction = await _unitOfWork.BeginTransactionAsync(cancellationToken);
 
         // 4. Create user entity
@@ -82,41 +76,16 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, AuthRespo
             throw new IdentityOperationException("Assigning role failed", roleErrors);
         }
 
-        var roles = new List<string> { AppRoles.Author };
+        // Persist task intents in the same transaction as the registration.
+        if (_backgroundTasks is not null)
+        {
+            await _backgroundTasks.WelcomeAsync(user.Id, cancellationToken);
+            await _backgroundTasks.EmailConfirmationAsync(user.Id, cancellationToken);
+        }
 
-        // 7. Generate JWT access token
-        var accessToken = _tokenService.GenerateAccessToken(user, roles);
-
-        // 8. Generate refresh token
-        var rawRefreshToken = _tokenService.GenerateRefreshToken();
-        var refreshTokenEntity = RefreshToken.Create(user.Id, rawRefreshToken, ipAddress: null, daysToLive: 7);
-
-        // 9. Persist refresh token hash
-        await _refreshTokenRepository.AddAsync(refreshTokenEntity, cancellationToken);
-        await _refreshTokenRepository.SaveChangesAsync(cancellationToken);
-
-        // Persist task intent in the same transaction as the registration.
-        if (_backgroundTasks is not null) await _backgroundTasks.WelcomeAsync(user.Id, cancellationToken);
-
-        // 10. Commit transaction
+        // 7. Commit transaction
         await transaction.CommitAsync(cancellationToken);
 
-        // 11. Return AuthResponse
-        var userDto = new UserDto(
-            user.Id,
-            user.Email ?? request.Email,
-            user.UserName ?? request.UserName,
-            user.DisplayName,
-            user.AvatarUrl,
-            user.Bio,
-            roles
-        );
-
-        return new AuthResponse(
-            accessToken,
-            rawRefreshToken,
-            DateTime.UtcNow.AddMinutes(15),
-            userDto
-        );
+        return new RegistrationPendingResponse(user.Email ?? request.Email, EmailConfirmationRequired: true);
     }
 }

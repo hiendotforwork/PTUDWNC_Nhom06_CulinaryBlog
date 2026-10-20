@@ -105,6 +105,7 @@ public class LoginCommandHandlerTests
         // Arrange
         var command = CreateValidCommand();
         var user = ApplicationUser.Create("Chef John", command.Email, "chef_john");
+        user.EmailConfirmed = true;
         _userRepositoryMock.Setup(r => r.FindByEmailAsync(command.Email, It.IsAny<CancellationToken>()))
             .ReturnsAsync(user);
         _userRepositoryMock.Setup(r => r.CheckPasswordSignInAsync(user, command.Password, It.IsAny<CancellationToken>()))
@@ -132,5 +133,30 @@ public class LoginCommandHandlerTests
         _refreshTokenRepositoryMock.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
         _transactionMock.Verify(t => t.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
         _unitOfWorkMock.Verify(u => u.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_WhenCredentialsValidButEmailNotConfirmed_ShouldThrowEmailNotConfirmed()
+    {
+        // Arrange
+        var command = CreateValidCommand();
+        var user = ApplicationUser.Create("Chef John", command.Email, "chef_john");
+        user.EmailConfirmed = false;
+        _userRepositoryMock.Setup(r => r.FindByEmailAsync(command.Email, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        _userRepositoryMock.Setup(r => r.CheckPasswordSignInAsync(user, command.Password, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SignInResult(true));
+
+        // Act
+        var act = () => _handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        var ex = await act.Should().ThrowAsync<AuthException>();
+        ex.Which.ErrorCode.Should().Be("EMAIL_NOT_CONFIRMED");
+        ex.Which.StatusCode.Should().Be(403);
+
+        _refreshTokenRepositoryMock.Verify(r => r.RevokeByUserIdAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _tokenServiceMock.Verify(t => t.GenerateAccessToken(It.IsAny<ApplicationUser>(), It.IsAny<IList<string>>()), Times.Never);
+        _unitOfWorkMock.Verify(u => u.BeginTransactionAsync(It.IsAny<System.Data.IsolationLevel>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }
