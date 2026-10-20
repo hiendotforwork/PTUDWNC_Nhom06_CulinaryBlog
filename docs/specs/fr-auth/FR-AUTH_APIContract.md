@@ -30,14 +30,16 @@ info:
     
     ## Authentication
     Most endpoints require Bearer token authentication. Obtain tokens via:
-    - `POST /auth/register` - Register and get tokens
-    - `POST /auth/login` - Login and get tokens
-    - `POST /auth/google` - Google OAuth login
+    - `POST /auth/login` - Login and get tokens (requires confirmed email)
+    - `POST /auth/google` - Google OAuth login (email auto-confirmed if verified by Google)
+    - `POST /auth/email/confirm` - Confirm email via token and get tokens
     
     ## Rate Limiting
     Authentication endpoints are rate limited:
     - 10 requests per minute per IP for /auth/register, /auth/login
     - 30 requests per minute per IP for /auth/refresh
+    - 5 requests per minute per IP for /auth/email/confirm, /auth/email/resend
+    - 60 seconds per-email cooldown for /auth/email/resend
   version: '1.0'
   contact:
     name: Culinary Blog API Support
@@ -77,8 +79,8 @@ paths:
     summary: Register a new user account
     description: |
       Creates a new user account with the Author role.
-      Returns tokens for immediate login (auto-login).
-      Sends welcome and verification emails asynchronously.
+      Returns pending confirmation status without issuing JWT or refresh tokens.
+      Queues welcome and verification emails asynchronously via Outbox.
     operationId: register
     security: []
     requestBody:
@@ -94,7 +96,7 @@ paths:
             password: "Password123!"
     responses:
       '201':
-        description: User registered successfully
+        description: User registered successfully, pending email confirmation
         headers:
           X-Request-Id:
             schema:
@@ -103,19 +105,10 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/AuthResponse'
+              $ref: '#/components/schemas/RegistrationPendingResponse'
             example:
-              accessToken: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-              refreshToken: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-              expiresAt: "2026-06-04T15:45:00Z"
-              user:
-                id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
-                displayName: "Nguyễn Văn A"
-                email: "user@example.com"
-                userName: "nguyenvana"
-                avatarUrl: null
-                roles:
-                  - "Author"
+              email: "user@example.com"
+              emailConfirmationRequired: true
       '409':
         $ref: '#/components/responses/Conflict'
       '422':
@@ -162,6 +155,20 @@ paths:
               $ref: '#/components/schemas/AuthResponse'
       '401':
         $ref: '#/components/responses/Unauthorized'
+      '403':
+        description: Email has not been confirmed yet
+        content:
+          application/problem+json:
+            schema:
+              $ref: '#/components/schemas/ProblemDetails'
+            example:
+              type: "https://culinaryblog.com/errors/auth/AUTH_EMAIL_NOT_CONFIRMED"
+              title: "Email not confirmed"
+              status: 403
+              detail: "Email chưa được xác nhận. Vui lòng kiểm tra hộp thư hoặc yêu cầu gửi lại email xác nhận."
+              instance: "/api/v1/auth/login"
+              extensions:
+                code: "AUTH_EMAIL_NOT_CONFIRMED"
       '423':
         description: Account locked due to too many failed attempts
         content:
@@ -303,44 +310,106 @@ paths:
 
 ---
 
-### 2.6. Verify Email
+### 2.6. Confirm Email
 
 ```yaml
-/auth/verify-email:
-  get:
+/auth/email/confirm:
+  post:
     tags:
       - Authentication
-    summary: Verify email address
+    summary: Confirm email address using token
     description: |
-      Verifies user's email address using the token sent via email.
-      Token expires after 24 hours and is single-use.
-      Upon verification, the user's emailConfirmed flag is set to true.
-    operationId: verifyEmail
+      Confirms user's email address using the userId and data-protected token.
+      Token is transported via URL fragment (#userId=...&token=...) and expires in 24 hours.
+      Upon successful confirmation, automatically issues access and refresh tokens (auto-login).
+    operationId: confirmEmail
     security: []
-    parameters:
-      - name: token
-        in: query
-        required: true
-        description: Email verification token
-        schema:
-          type: string
-        example: "abc123def456..."
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ConfirmEmailRequest'
+          example:
+            userId: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+            token: "CfDJ8M..."
     responses:
       '200':
-        description: Email verified successfully
+        description: Email confirmed successfully and tokens issued
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/EmailVerificationResponse'
-            example:
-              message: "Email đã được xác nhận thành công"
-              emailConfirmed: true
+              $ref: '#/components/schemas/AuthResponse'
       '400':
-        description: Invalid or expired token
+        description: Invalid or expired confirmation token
         content:
           application/problem+json:
             schema:
               $ref: '#/components/schemas/ProblemDetails'
+            example:
+              type: "https://culinaryblog.com/errors/auth/AUTH_INVALID_VERIFICATION_TOKEN"
+              title: "Invalid verification token"
+              status: 400
+              detail: "Token xác nhận email không hợp lệ hoặc đã hết hạn."
+              instance: "/api/v1/auth/email/confirm"
+              extensions:
+                code: "AUTH_INVALID_VERIFICATION_TOKEN"
+      '404':
+        description: User not found
+        content:
+          application/problem+json:
+            schema:
+              $ref: '#/components/schemas/ProblemDetails'
+            example:
+              type: "https://culinaryblog.com/errors/auth/AUTH_USER_NOT_FOUND"
+              title: "User not found"
+              status: 404
+              detail: "Người dùng không tồn tại."
+              instance: "/api/v1/auth/email/confirm"
+              extensions:
+                code: "AUTH_USER_NOT_FOUND"
+      '422':
+        $ref: '#/components/responses/ValidationError'
+      '429':
+        $ref: '#/components/responses/RateLimitExceeded'
+```
+
+---
+
+### 2.7. Resend Email Confirmation
+
+```yaml
+/auth/email/resend:
+  post:
+    tags:
+      - Authentication
+    summary: Resend email confirmation link
+    description: |
+      Requests a new confirmation email. Always returns 202 Accepted to prevent account enumeration.
+      Rate limited to 5 requests per minute per IP, and 60 seconds cooldown per email address.
+    operationId: resendEmailConfirmation
+    security: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ResendEmailConfirmationRequest'
+          example:
+            email: "user@example.com"
+    responses:
+      '202':
+        description: Request accepted
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResendEmailConfirmationResponse'
+            example:
+              message: "Nếu email tồn tại trong hệ thống và chưa được xác nhận, một liên kết xác nhận mới đã được gửi."
+      '422':
+        $ref: '#/components/responses/ValidationError'
+      '429':
+        $ref: '#/components/responses/RateLimitExceeded'
 ```
 
 ---
@@ -646,17 +715,58 @@ components:
               description: Account creation timestamp
               example: "2026-06-01T10:00:00Z"
 
-    EmailVerificationResponse:
+    RegistrationPendingResponse:
       type: object
+      required:
+        - email
+        - emailConfirmationRequired
+      properties:
+        email:
+          type: string
+          format: email
+          description: Registered email address
+          example: "user@example.com"
+        emailConfirmationRequired:
+          type: boolean
+          description: Whether confirmation is required before login
+          example: true
+
+    ConfirmEmailRequest:
+      type: object
+      required:
+        - userId
+        - token
+      properties:
+        userId:
+          type: string
+          format: uuid
+          description: User ID received in email confirmation link
+          example: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+        token:
+          type: string
+          description: ASP.NET Core Identity Data Protection confirmation token
+          example: "CfDJ8M..."
+
+    ResendEmailConfirmationRequest:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+          description: User email address
+          example: "user@example.com"
+
+    ResendEmailConfirmationResponse:
+      type: object
+      required:
+        - message
       properties:
         message:
           type: string
-          description: Success message
-          example: "Email đã được xác nhận thành công"
-        emailConfirmed:
-          type: boolean
-          description: Confirmation status
-          example: true
+          description: Status message
+          example: "Nếu email tồn tại trong hệ thống và chưa được xác nhận, một liên kết xác nhận mới đã được gửi."
 
     ProblemDetails:
       type: object

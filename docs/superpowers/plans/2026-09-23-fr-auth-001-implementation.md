@@ -1,5 +1,8 @@
 # FR-AUTH-001: User Registration Implementation Plan
 
+> ⚠️ **HISTORICAL PLAN / SUPERSEDED IN PART:**
+> This implementation plan originally implemented auto-login upon registration. It has been superseded by `docs/superpowers/plans/2026-10-20-fr-auth-008-email-verification.md` (FR-AUTH-008 Email Verification), where registration returns `RegistrationPendingResponse` without issuing JWT/refresh tokens, and email confirmation is required before login.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Triển khai hoàn chỉnh tính năng đăng ký tài khoản (FR-AUTH-001) cho Culinary Blog, bao gồm Application layer (CQRS/MediatR), Infrastructure services/repositories, API endpoint POST /api/v1/auth/register, rate limiting, exception handling, và trọn bộ Unit/Integration tests theo đặc tả FR-AUTH-001_Plan.md.

@@ -61,7 +61,7 @@ schema, migrations và các ràng buộc vẫn tuân theo PostgreSQL.
 | NormalizedUserName   | varchar(256) | YES      | -   | -   | YES    | -       | Identity: normalized username                       | Identity                              |
 | Email                | varchar(256) | YES      | -   | -   | YES    | -       | Identity: Email                                     | FR-AUTH-001, FR-AUTH-002, FR-AUTH-003 |
 | NormalizedEmail      | varchar(256) | YES      | -   | -   | YES    | -       | Identity: normalized email                          | Identity                              |
-| EmailConfirmed       | boolean      | NO       | -   | -   | -      | FALSE   | Identity: Email đã được xác nhận (FR-AUTH-006)      | FR-AUTH-006                           |
+| EmailConfirmed       | boolean      | NO       | -   | -   | -      | FALSE   | Identity: Email đã được xác nhận (FR-AUTH-008)      | FR-AUTH-008                           |
 | PasswordHash         | varchar(500) | YES      | -   | -   | -      | -       | Identity: PBKDF2 hash                               | FR-AUTH-002                           |
 | SecurityStamp        | varchar(500) | YES      | -   | -   | -      | -       | Identity: security stamp (change on password reset) | Identity                              |
 | ConcurrencyStamp     | varchar(500) | YES      | -   | -   | -      | -       | Identity: concurrency token                         | Identity                              |
@@ -241,7 +241,7 @@ erDiagram
         string Email "Unique, nullable"
         string UserName "Unique, nullable"
         string PasswordHash "PBKDF2 hash"
-        bool EmailConfirmed "NOT NULL, default FALSE (FR-AUTH-006)"
+        bool EmailConfirmed "NOT NULL, default FALSE (FR-AUTH-008)"
         string DisplayName "NOT NULL"
         string AvatarUrl "nullable"
         text Bio "nullable"
@@ -922,12 +922,19 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     // User settings
     options.User.RequireUniqueEmail = true;
 
-    // SignIn settings
-    options.SignIn.RequireConfirmedAccount = false; // TODO: implement email confirmation
+    // SignIn settings (FR-AUTH-008: Gated login and token issuance require confirmed email)
+    options.SignIn.RequireConfirmedAccount = false; // Gated explicitly in Application handlers and JWT OnTokenValidated
     options.SignIn.RequireConfirmedEmail = false;
+    options.Tokens.EmailConfirmationTokenProvider = TokenOptions.DefaultEmailProvider;
 })
 .AddEntityFrameworkStores<CulinaryBlogDbContext>()
 .AddDefaultTokenProviders();
+
+// Configure 24h Token Provider Lifespan for Email Confirmation
+builder.Services.Configure<DataProtectionTokenProviderOptions>(options =>
+{
+    options.TokenLifespan = TimeSpan.FromHours(24);
+});
 
 // Configure JWT
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("Jwt"));
@@ -1024,7 +1031,7 @@ var stored = await _context.RefreshTokens
 | Id                   | ALL                                                | User identifier          |
 | Email                | FR-AUTH-001, FR-AUTH-002, FR-AUTH-003, FR-AUTH-006 | Login, unique identifier |
 | UserName             | FR-AUTH-001, FR-AUTH-006                           | Display identifier       |
-| EmailConfirmed       | FR-AUTH-006                                       | Email verification status|
+| EmailConfirmed       | FR-AUTH-008                                       | Email verification status (required for login/protected APIs)|
 | PasswordHash         | FR-AUTH-002                                        | Password verification    |
 | DisplayName          | FR-AUTH-001, FR-AUTH-006, FR-AUTH-007              | Public display name      |
 | AvatarUrl            | FR-AUTH-001, FR-AUTH-006, FR-AUTH-007              | Profile image            |

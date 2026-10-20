@@ -60,7 +60,7 @@ public class RegisterCommandHandlerTests
     private readonly RegisterCommandHandler _handler;
 
     [Fact]
-    public async Task Handle_ValidCommand_ReturnsAuthResponseWithTokens()
+    public async Task Handle_ValidCommand_ReturnsPendingResponseWithoutTokens()
     {
         // Arrange
         var command = new RegisterCommand
@@ -80,20 +80,13 @@ public class RegisterCommandHandlerTests
         _userManager.Setup(x => x.AddToRoleAsync(It.IsAny<ApplicationUser>(), "Author"))
             .ReturnsAsync(IdentityResult.Success);
 
-        _jwtService.Setup(x => x.GenerateAccessToken(It.IsAny<ApplicationUser>(), It.IsAny<IList<string>>()))
-            .Returns("access-token");
-        
-        _jwtService.Setup(x => x.GenerateRefreshToken(It.IsAny<string>()))
-            .Returns(new RefreshToken { Token = "refresh-token" });
-
         // Act
         var result = await _handler.Handle(command, CancellationToken.None);
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        result.Value.AccessToken.Should().Be("access-token");
-        result.Value.RefreshToken.Should().Be("refresh-token");
-        result.Value.User.Email.Should().Be(command.Email);
+        result.Value.Email.Should().Be(command.Email);
+        result.Value.EmailConfirmationRequired.Should().BeTrue();
     }
 
     [Fact]
@@ -874,7 +867,7 @@ public class AuthApiIntegrationTests : IClassFixture<WebApplicationFactory>
     private readonly HttpClient _client;
 
     [Fact]
-    public async Task Register_ValidRequest_Returns201WithTokens()
+    public async Task Register_ValidRequest_Returns201WithPendingStatus()
     {
         // Arrange
         var request = new
@@ -891,19 +884,18 @@ public class AuthApiIntegrationTests : IClassFixture<WebApplicationFactory>
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         
-        var content = await response.Content.ReadFromJsonAsync<AuthResponseDto>();
+        var content = await response.Content.ReadFromJsonAsync<RegistrationPendingResponse>();
         content.Should().NotBeNull();
-        content!.AccessToken.Should().NotBeNullOrEmpty();
-        content.RefreshToken.Should().NotBeNullOrEmpty();
-        content.User.Email.Should().Be(request.email);
+        content!.Email.Should().Be(request.email);
+        content.EmailConfirmationRequired.Should().BeTrue();
     }
 
     [Fact]
     public async Task Login_ValidCredentials_Returns200WithTokens()
     {
-        // Arrange - First register
+        // Arrange - Register and confirm user
         var email = $"login-test-{Guid.NewGuid()}@example.com";
-        await RegisterTestUser(email);
+        await RegisterConfirmedTestUser(email);
         
         // Act - Then login
         var response = await _client.PostAsJsonAsync("/api/v1/auth/login", new
@@ -1307,7 +1299,7 @@ export default function () {
   
   check(registerRes, {
     'register status 201': (r) => r.status === 201,
-    'register has token': (r) => JSON.parse(r.body).accessToken !== undefined,
+    'register pending confirmation': (r) => JSON.parse(r.body).emailConfirmationRequired === true,
   });
 
   sleep(1);

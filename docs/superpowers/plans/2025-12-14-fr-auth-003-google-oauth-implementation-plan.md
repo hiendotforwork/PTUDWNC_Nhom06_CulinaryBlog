@@ -1,5 +1,8 @@
 # FR-AUTH-003: Đăng nhập bằng Google OAuth 2.0 - Kế hoạch triển khai
 
+> ⚠️ **UPDATED BY FR-AUTH-008 (EMAIL VERIFICATION):**
+> Google OAuth enforces email verification assertions: Google OpenID/userinfo claim `email_verified == true` is required. When true, `EmailConfirmed` is set to true on account creation or linking without sending an email verification link. If false or absent, authentication fails closed.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Triển khai chức năng đăng nhập/đăng ký bằng Google OAuth 2.0 sử dụng ASP.NET Core Google Authentication middleware, đảm bảo consistency với FR-AUTH-002 (đăng nhập email/password).

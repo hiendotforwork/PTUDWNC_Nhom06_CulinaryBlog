@@ -3,7 +3,7 @@
 ## Prerequisites
 - Backend running at http://localhost:5058
 - Frontend running at http://localhost:3000
-- Test user account registered and logged in
+- Test user account registered, email confirmed, and logged in
 
 ---
 
