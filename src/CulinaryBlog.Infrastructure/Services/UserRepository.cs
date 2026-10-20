@@ -137,4 +137,15 @@ public class UserRepository : IUserRepository
         var result = await _userManager.UpdateAsync(user);
         return (result.Succeeded, result.Errors.Select(e => e.Description));
     }
+
+    public Task<string> GenerateEmailConfirmationTokenAsync(ApplicationUser user, CancellationToken cancellationToken = default)
+    {
+        return _userManager.GenerateEmailConfirmationTokenAsync(user);
+    }
+
+    public async Task<(bool Succeeded, IEnumerable<string> Errors)> ConfirmEmailAsync(ApplicationUser user, string token, CancellationToken cancellationToken = default)
+    {
+        var result = await _userManager.ConfirmEmailAsync(user, token);
+        return (result.Succeeded, result.Errors.Select(e => e.Description));
+    }
 }

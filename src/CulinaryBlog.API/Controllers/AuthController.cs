@@ -4,6 +4,8 @@ using CulinaryBlog.Application.Commands.Auth.Login;
 using CulinaryBlog.Application.Commands.Auth.Register;
 using CulinaryBlog.Application.Commands.Auth.Logout;
 using CulinaryBlog.Application.Commands.Auth.RefreshToken;
+using CulinaryBlog.Application.Commands.Auth.ConfirmEmail;
+using CulinaryBlog.Application.Commands.Auth.ResendEmailConfirmation;
 using CulinaryBlog.Application.DTOs.Auth;
 using CulinaryBlog.Application.Commands.Auth.GoogleLogin;
 using CulinaryBlog.Application.Commands.Auth.UpdateProfile;
@@ -27,6 +29,8 @@ public class AuthController : ControllerBase
     private readonly IValidator<LoginCommand> _loginValidator;
     private readonly IValidator<RefreshTokenCommand>? _refreshValidator;
     private readonly IValidator<UpdateProfileCommand>? _updateProfileValidator;
+    private readonly IValidator<ConfirmEmailCommand>? _confirmEmailValidator;
+    private readonly IValidator<ResendEmailConfirmationCommand>? _resendEmailValidator;
     private readonly IConfiguration _configuration;
 
     public AuthController(
@@ -35,7 +39,9 @@ public class AuthController : ControllerBase
         IValidator<LoginCommand> loginValidator,
         IConfiguration configuration,
         IValidator<RefreshTokenCommand>? refreshValidator = null,
-        IValidator<UpdateProfileCommand>? updateProfileValidator = null)
+        IValidator<UpdateProfileCommand>? updateProfileValidator = null,
+        IValidator<ConfirmEmailCommand>? confirmEmailValidator = null,
+        IValidator<ResendEmailConfirmationCommand>? resendEmailValidator = null)
     {
         _mediator = mediator;
         _registerValidator = registerValidator;
@@ -43,6 +49,8 @@ public class AuthController : ControllerBase
         _configuration = configuration;
         _refreshValidator = refreshValidator;
         _updateProfileValidator = updateProfileValidator;
+        _confirmEmailValidator = confirmEmailValidator;
+        _resendEmailValidator = resendEmailValidator;
     }
 
     [HttpPost("register")]
@@ -114,6 +122,50 @@ public class AuthController : ControllerBase
 
         var result = await _mediator.Send(command, cancellationToken);
         return Ok(result);
+    }
+
+    [HttpPost("email/confirm")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<IActionResult> ConfirmEmail([FromBody] ConfirmEmailRequest request, CancellationToken cancellationToken)
+    {
+        var command = new ConfirmEmailCommand(request.UserId, request.Token);
+        if (_confirmEmailValidator is not null)
+        {
+            var validationResult = await _confirmEmailValidator.ValidateAsync(command, cancellationToken);
+            if (!validationResult.IsValid)
+            {
+                throw new ValidationException(validationResult.Errors);
+            }
+        }
+
+        var result = await _mediator.Send(command, cancellationToken);
+        return Ok(result);
+    }
+
+    [HttpPost("email/resend")]
+    [EnableRateLimiting("ResendEmailRateLimit")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+    public async Task<IActionResult> ResendEmailConfirmation([FromBody] ResendEmailConfirmationRequest request, CancellationToken cancellationToken)
+    {
+        var command = new ResendEmailConfirmationCommand(request.Email);
+        if (_resendEmailValidator is not null)
+        {
+            var validationResult = await _resendEmailValidator.ValidateAsync(command, cancellationToken);
+            if (!validationResult.IsValid)
+            {
+                throw new ValidationException(validationResult.Errors);
+            }
+        }
+
+        await _mediator.Send(command, cancellationToken);
+        return Accepted();
     }
 
     [HttpGet("google-signin")]

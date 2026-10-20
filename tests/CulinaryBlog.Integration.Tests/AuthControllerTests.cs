@@ -630,5 +630,152 @@ public class AuthControllerTests : IClassFixture<CustomWebApplicationFactory>
         var response = await _client.SendAsync(request);
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
+
+    [Fact]
+    public async Task ConfirmEmail_WithValidToken_Returns200WithAuthResponse()
+    {
+        string userId;
+        string token;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            var user = new ApplicationUser
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Email = $"confirm_valid_{Guid.NewGuid():N}@culinaryblog.vn",
+                UserName = $"confirm_user_{Guid.NewGuid():N}",
+                DisplayName = "Confirm Chef",
+                EmailConfirmed = false,
+                SecurityStamp = Guid.NewGuid().ToString("N")
+            };
+            var createResult = await userManager.CreateAsync(user, "Password123!");
+            createResult.Succeeded.Should().BeTrue();
+            userId = user.Id;
+            token = await userManager.GenerateEmailConfirmationTokenAsync(user);
+        }
+
+        var confirmRequest = new ConfirmEmailRequest(userId, token);
+        var response = await _client.PostAsJsonAsync("/api/v1/auth/email/confirm", confirmRequest);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var authResponse = await response.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions);
+        authResponse.Should().NotBeNull();
+        authResponse!.AccessToken.Should().NotBeNullOrWhiteSpace();
+        authResponse.RefreshToken.Should().NotBeNullOrWhiteSpace();
+        authResponse.User.Id.Should().Be(userId);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            var updatedUser = await userManager.FindByIdAsync(userId);
+            updatedUser!.EmailConfirmed.Should().BeTrue();
+        }
+    }
+
+    [Fact]
+    public async Task ConfirmEmail_WithInvalidToken_Returns400BadRequest()
+    {
+        string userId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            var user = new ApplicationUser
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Email = $"confirm_inv_{Guid.NewGuid():N}@culinaryblog.vn",
+                UserName = $"confirm_inv_{Guid.NewGuid():N}",
+                DisplayName = "Confirm Invalid",
+                EmailConfirmed = false,
+                SecurityStamp = Guid.NewGuid().ToString("N")
+            };
+            await userManager.CreateAsync(user, "Password123!");
+            userId = user.Id;
+        }
+
+        var confirmRequest = new ConfirmEmailRequest(userId, "completely-invalid-token");
+        var response = await _client.PostAsJsonAsync("/api/v1/auth/email/confirm", confirmRequest);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task ConfirmEmail_Replay_Returns409Conflict()
+    {
+        string userId;
+        string token;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            var user = new ApplicationUser
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Email = $"confirm_replay_{Guid.NewGuid():N}@culinaryblog.vn",
+                UserName = $"confirm_rep_{Guid.NewGuid():N}",
+                DisplayName = "Confirm Replay",
+                EmailConfirmed = false,
+                SecurityStamp = Guid.NewGuid().ToString("N")
+            };
+            await userManager.CreateAsync(user, "Password123!");
+            userId = user.Id;
+            token = await userManager.GenerateEmailConfirmationTokenAsync(user);
+        }
+
+        var confirmRequest = new ConfirmEmailRequest(userId, token);
+        var firstResponse = await _client.PostAsJsonAsync("/api/v1/auth/email/confirm", confirmRequest);
+        firstResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var secondResponse = await _client.PostAsJsonAsync("/api/v1/auth/email/confirm", confirmRequest);
+        secondResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
+    public async Task ConfirmEmail_GetMethod_Returns405MethodNotAllowed()
+    {
+        var response = await _client.GetAsync("/api/v1/auth/email/confirm");
+        response.StatusCode.Should().Be(HttpStatusCode.MethodNotAllowed);
+    }
+
+    [Fact]
+    public async Task ResendEmailConfirmation_AlwaysReturns202Accepted_NoEmailEnumeration()
+    {
+        var existingEmail = $"resend_exist_{Guid.NewGuid():N}@culinaryblog.vn";
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            var user = new ApplicationUser
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Email = existingEmail,
+                UserName = $"resend_user_{Guid.NewGuid():N}",
+                DisplayName = "Resend Chef",
+                EmailConfirmed = false,
+                SecurityStamp = Guid.NewGuid().ToString("N")
+            };
+            await userManager.CreateAsync(user, "Password123!");
+        }
+
+        // 1. Existing pending user
+        var response1 = await _client.PostAsJsonAsync("/api/v1/auth/email/resend", new ResendEmailConfirmationRequest(existingEmail));
+        response1.StatusCode.Should().Be(HttpStatusCode.Accepted);
+
+        // 2. Non-existent user
+        var nonExistentEmail = $"resend_none_{Guid.NewGuid():N}@culinaryblog.vn";
+        var response2 = await _client.PostAsJsonAsync("/api/v1/auth/email/resend", new ResendEmailConfirmationRequest(nonExistentEmail));
+        response2.StatusCode.Should().Be(HttpStatusCode.Accepted);
+    }
+
+    [Fact]
+    public async Task ResendEmailConfirmation_WithInvalidEmail_Returns422()
+    {
+        var response = await _client.PostAsJsonAsync("/api/v1/auth/email/resend", new ResendEmailConfirmationRequest("invalid-email"));
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+    }
+
+    [Fact]
+    public async Task ResendEmailConfirmation_GetMethod_Returns405MethodNotAllowed()
+    {
+        var response = await _client.GetAsync("/api/v1/auth/email/resend");
+        response.StatusCode.Should().Be(HttpStatusCode.MethodNotAllowed);
+    }
 }
 

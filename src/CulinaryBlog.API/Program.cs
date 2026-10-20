@@ -88,6 +88,14 @@ builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
+if (isTesting)
+{
+    builder.Services.AddSingleton<IEmailConfirmationResendLimiter, InMemoryEmailConfirmationResendLimiter>();
+}
+else
+{
+    builder.Services.AddSingleton<IEmailConfirmationResendLimiter, EmailConfirmationResendLimiter>();
+}
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<IRecipeRepository, RecipeRepository>();
 builder.Services.AddScoped<IRecipeCommandRepository, RecipeCommandRepository>();
@@ -167,6 +175,11 @@ builder.Services.AddRateLimiter(options =>
         RateLimitPartition.GetFixedWindowLimiter(
             context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
             _ => new FixedWindowRateLimiterOptions { PermitLimit = refreshPermitLimit, Window = TimeSpan.FromMinutes(1) }));
+    var resendPermitLimit = isTesting ? 1000 : 5;
+    options.AddPolicy("ResendEmailRateLimit", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
+            _ => new FixedWindowRateLimiterOptions { PermitLimit = resendPermitLimit, Window = TimeSpan.FromMinutes(1) }));
 });
 
 builder.Services.AddControllers().ConfigureApiBehaviorOptions(options =>
