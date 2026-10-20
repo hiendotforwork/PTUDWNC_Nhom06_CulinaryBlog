@@ -8,6 +8,8 @@ using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authentication.OAuth;
 using System.Text.Json;
 using CulinaryBlog.Application.Recipes.Validation;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using System.Text;
 using System.Threading.RateLimiting;
 using CulinaryBlog.API.Middleware;
@@ -131,6 +133,27 @@ builder.Services.AddAuthentication(options =>
         ValidateAudience = true,
         ValidAudience = jwtAudience,
         ClockSkew = TimeSpan.Zero
+    };
+    options.Events = new JwtBearerEvents
+    {
+        OnTokenValidated = async context =>
+        {
+            var userId = context.Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                ?? context.Principal?.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
+
+            if (string.IsNullOrEmpty(userId))
+            {
+                context.Fail("User ID claim missing.");
+                return;
+            }
+
+            var userManager = context.HttpContext.RequestServices.GetRequiredService<UserManager<AuthApplicationUser>>();
+            var user = await userManager.FindByIdAsync(userId);
+            if (user == null || !user.IsActive || !user.EmailConfirmed)
+            {
+                context.Fail("User not found, inactive, or email not confirmed.");
+            }
+        }
     };
 })
 .AddCookie(IdentityConstants.ExternalScheme, options =>

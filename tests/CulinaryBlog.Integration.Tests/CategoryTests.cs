@@ -270,7 +270,8 @@ public sealed class CategoryTests(CustomWebApplicationFactory factory)
             Id = Guid.NewGuid().ToString(),
             UserName = $"category_admin_{suffix}",
             Email = $"category_admin_{suffix}@culinaryblog.vn",
-            DisplayName = "Category Admin"
+            DisplayName = "Category Admin",
+            EmailConfirmed = true
         };
 
         using var scope = factory.Services.CreateScope();
