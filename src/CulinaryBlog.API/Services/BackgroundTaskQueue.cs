@@ -16,17 +16,38 @@ public sealed class DatabaseBackgroundTaskQueue(ApplicationDbContext db) : IBack
 {
     public Task WelcomeAsync(string userId, CancellationToken ct) => AddAsync("welcome", userId, ct);
     public Task ResizeAsync(Guid imageId, CancellationToken ct) => AddAsync("resize", imageId.ToString(), ct);
-    private Task AddAsync(string kind, string target, CancellationToken ct) =>
-        db.Database.ExecuteSqlInterpolatedAsync($"""
+    public Task EmailConfirmationAsync(string userId, CancellationToken ct) => AddAsync("email-verification", userId, ct);
+    private Task AddAsync(string kind, string target, CancellationToken ct)
+    {
+        if (!db.Database.IsRelational())
+        {
+            if (kind is "welcome" or "resize")
+            {
+                var existing = BackgroundTaskExecution.InMemoryTasks.Values.Any(t => t.Kind == kind && t.TargetId == target);
+                if (existing) return Task.CompletedTask;
+            }
+            var taskId = Guid.NewGuid();
+            BackgroundTaskExecution.InMemoryTasks[taskId] = new BackgroundTaskRow
+            {
+                Id = taskId,
+                Kind = kind,
+                TargetId = target
+            };
+            return Task.CompletedTask;
+        }
+
+        return db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO culinary."BackgroundTasks" ("Id", "Kind", "TargetId")
             VALUES ({Guid.NewGuid()}, {kind}, {target})
-            ON CONFLICT ("Kind", "TargetId") DO NOTHING
+            ON CONFLICT DO NOTHING
             """, ct);
+    }
 }
 public sealed class NoBackgroundTaskQueue : IBackgroundTaskQueue
 {
     public Task WelcomeAsync(string userId, CancellationToken ct) => Task.CompletedTask;
     public Task ResizeAsync(Guid imageId, CancellationToken ct) => Task.CompletedTask;
+    public Task EmailConfirmationAsync(string userId, CancellationToken ct) => Task.CompletedTask;
 }
 
 // Outbox and business records commit together. Dispatch may repeat after a crash;
@@ -62,6 +83,8 @@ public sealed class BackgroundTaskDispatcher(IServiceScopeFactory scopes, ILogge
         {
             if (task.Kind == "welcome")
                 jobs.Enqueue<WelcomeEmailJob>(job => job.RunAsync(task.Id, CancellationToken.None));
+            else if (task.Kind == "email-verification")
+                jobs.Enqueue<EmailVerificationJob>(job => job.RunAsync(task.Id, CancellationToken.None));
             else
                 jobs.Enqueue<ImageResizeJob>(job => job.RunAsync(task.Id, CancellationToken.None));
             await db.Database.ExecuteSqlInterpolatedAsync($"""
@@ -74,8 +97,20 @@ public sealed class BackgroundTaskDispatcher(IServiceScopeFactory scopes, ILogge
 
 public static class BackgroundTaskExecution
 {
+    public static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, BackgroundTaskRow> InMemoryTasks = new();
+
     public static async Task<BackgroundTaskRow?> LockAsync(ApplicationDbContext db, Guid id, string kind, CancellationToken ct)
     {
+        if (!db.Database.IsRelational())
+        {
+            if (InMemoryTasks.TryGetValue(id, out var inMemRow))
+            {
+                if (inMemRow.Kind != kind) throw new InvalidOperationException("Unexpected task kind.");
+                return inMemRow.CompletedAt is null ? inMemRow : null;
+            }
+            return null;
+        }
+
         await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtext({id.ToString()}))", ct);
         var row = await db.Database.SqlQueryRaw<BackgroundTaskRow>("""
             SELECT "Id", "Kind", "TargetId", "CompletedAt" FROM culinary."BackgroundTasks"
@@ -83,8 +118,19 @@ public static class BackgroundTaskExecution
         if (row is not null && row.Kind != kind) throw new InvalidOperationException("Unexpected task kind.");
         return row?.CompletedAt is null ? row : null;
     }
-    public static Task CompleteAsync(ApplicationDbContext db, Guid id, CancellationToken ct) =>
-        db.Database.ExecuteSqlInterpolatedAsync($"""
+    public static Task CompleteAsync(ApplicationDbContext db, Guid id, CancellationToken ct)
+    {
+        if (!db.Database.IsRelational())
+        {
+            if (InMemoryTasks.TryGetValue(id, out var inMemRow))
+            {
+                inMemRow.CompletedAt = DateTimeOffset.UtcNow;
+            }
+            return Task.CompletedTask;
+        }
+
+        return db.Database.ExecuteSqlInterpolatedAsync($"""
             UPDATE culinary."BackgroundTasks" SET "CompletedAt" = now() WHERE "Id" = {id}
             """, ct);
+    }
 }

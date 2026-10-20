@@ -39,6 +39,7 @@ public static class RuntimeRegistration
         });
         builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
         builder.Services.AddScoped<WelcomeEmailJob>();
+        builder.Services.AddScoped<EmailVerificationJob>();
         builder.Services.AddScoped<ImageResizeJob>();
         builder.Services.AddScoped<SitemapGenerationJob>();
         builder.Services.AddScoped<IOriginalImageReader, OriginalImageReader>();

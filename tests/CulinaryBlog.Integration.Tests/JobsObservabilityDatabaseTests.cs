@@ -418,6 +418,8 @@ public sealed class JobsObservabilityDatabaseTests
         public int Calls; public bool Fail;
         public Task SendWelcomeEmailAsync(string email, string name, CancellationToken ct = default)
         { Calls++; if (Fail) throw new IOException("SMTP unavailable"); return Task.CompletedTask; }
+        public Task SendEmailConfirmationAsync(string email, string name, string link, CancellationToken ct = default)
+        { Calls++; if (Fail) throw new IOException("SMTP unavailable"); return Task.CompletedTask; }
     }
     private sealed class ImageReader : IOriginalImageReader
     {
