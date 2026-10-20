@@ -111,10 +111,10 @@ Do not mutate account state from a `GET` endpoint. The confirmation token may ap
 ## 6. Authorization and Existing Sessions
 
 - Registration must never establish an authenticated session for an unconfirmed local account.
-- Login and refresh checks alone do not stop already-issued access tokens. Author API authorization must check current confirmation state server-side (or use an equally immediate revocation mechanism) so an unconfirmed account cannot use an old token.
-- Guest/public endpoints must not require confirmation.
+- Login and refresh checks alone do not stop already-issued access tokens. Every protected application API request must check current confirmation state server-side (or use an equally immediate revocation mechanism), not only Author endpoints. This includes profile endpoints such as `GET /api/v1/auth/me` and role-gated endpoints.
+- Requests from an unconfirmed account using an old access token must be rejected on every endpoint requiring authentication. Anonymous confirmation, resend, and logout endpoints remain accessible; Guest/public endpoints remain accessible without confirmation.
 - Do not trust a client-side `emailConfirmed` value or a stale JWT claim as the sole enforcement mechanism.
-- Do not bulk-mark legacy local accounts confirmed. Existing local accounts must confirm the email on file before login/refresh or Author API access. Provide resend from the unauthenticated login/verification flow. Existing Google-linked accounts must reauthenticate through Google and pass the verified-email check before being marked confirmed. Guest/public routes remain available throughout.
+- Do not bulk-mark legacy local accounts confirmed. Existing local accounts must confirm the email on file before login, refresh, or any protected API access. Provide resend from the unauthenticated login/verification flow. Existing Google-linked accounts must reauthenticate through Google and pass the verified-email check before being marked confirmed. Guest/public routes remain available throughout.
 
 ## 7. Security, Abuse, and Error Handling
 
@@ -136,12 +136,12 @@ Do not mutate account state from a `GET` endpoint. The confirmation token may ap
 5. Replaying a used confirmation token does not issue another session.
 6. Resend works for pending users, is rate limited, and does not disclose account existence/state in its response.
 7. A local user with correct password but unconfirmed email cannot log in; frontend shows the resend path.
-8. Refresh and Author API calls reject unconfirmed accounts, including requests using access tokens issued before the policy is enforced.
+8. Refresh and every protected API reject unconfirmed accounts, including requests using access tokens issued before the policy is enforced; explicitly cover `GET /api/v1/auth/me` and an Author operation.
 9. Guest/public routes remain accessible without a verified account.
 10. A verified Google OAuth identity can create/link a confirmed account and sign in without a separate confirmation email.
 11. Google identity without a verified-email assertion cannot create an Author session or be auto-linked by email.
 12. Raw verification tokens and tokenized links do not appear in logs.
-13. Existing local accounts are not silently trusted; they must confirm before login/Author access. Existing Google-linked accounts can be confirmed by a fresh validated Google sign-in with a verified-email assertion.
+13. Existing local accounts are not silently trusted; they must confirm before login or any protected API access. Existing Google-linked accounts can be confirmed by a fresh validated Google sign-in with a verified-email assertion.
 14. The API contract, FR-AUTH analysis report, test plan, and affected UAT/implementation documents agree on the new behavior.
 
 ## 9. Out of Scope
@@ -154,4 +154,4 @@ Do not mutate account state from a `GET` endpoint. The confirmation token may ap
 
 ## 10. Rollout Impact
 
-Legacy local users will be unable to sign in or use Author APIs until they confirm their stored email address. Login and refresh must not issue tokens for them; existing access tokens must also be denied by Author authorization checks. They retain Guest access and can request a confirmation email without signing in. Existing Google-linked users must sign in again through Google and pass the verified-email check. This strict rollout matches the requirement that an unconfirmed account cannot authenticate, but requires a clear release notice and working email delivery before enforcement.
+Legacy local users will be unable to sign in or use any protected API until they confirm their stored email address. Login and refresh must not issue tokens for them; existing access tokens must also be denied by authorization checks on every protected endpoint, including profile APIs. They retain Guest access and can request a confirmation email without signing in. Existing Google-linked users must sign in again through Google and pass the verified-email check. This strict rollout matches the requirement that an unconfirmed account cannot authenticate, but requires a clear release notice and working email delivery before enforcement.
