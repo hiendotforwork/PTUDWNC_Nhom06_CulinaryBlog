@@ -356,7 +356,7 @@ paths:
     description: |
       Confirms user's email address using the userId and data-protected token.
       Token is transported via URL fragment (#userId=...&token=...) and expires in 24 hours.
-      Upon successful confirmation, automatically issues access and refresh tokens (auto-login).
+      Upon the first successful confirmation, returns an AuthResponse with access and refresh tokens. A replay after confirmation returns a conflict.
     operationId: confirmEmail
     security: []
     requestBody:

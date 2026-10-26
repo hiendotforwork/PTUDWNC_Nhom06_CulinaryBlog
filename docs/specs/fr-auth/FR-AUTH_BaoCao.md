@@ -93,13 +93,13 @@ FR-AUTH (Module Xác thực và Quản lý Người dùng)
 |------------|----------|
 | **Function ID** | FR-AUTH-001 |
 | **Tên chức năng** | Đăng ký Tài khoản Mới |
-| **Mục đích** | Cho phép Guest tạo tài khoản mới, tự động gán role "Author", auto-login sau đăng ký |
+| **Mục đích** | Cho phép Guest tạo tài khoản mới, tự động gán role "Author" và xác nhận email trước khi sử dụng tài khoản |
 | **Actor** | Guest (Anonymous User) |
 | **Mức ưu tiên** | M – Must Have |
 
-**Mô tả:** Hệ thống cho phép người dùng chưa có tài khoản tạo một tài khoản mới bằng cách cung cấp thông tin cơ bản. Sau khi đăng ký thành công, người dùng tự động được gán role "Author" và nhận bộ token để truy cập ngay lập tức (auto-login sau đăng ký). Hệ thống kích hoạt job gửi email chào mừng và email xác nhận bất đồng bộ qua Hangfire.
+**Mô tả:** Hệ thống cho phép người dùng chưa có tài khoản tạo một tài khoản mới bằng cách cung cấp thông tin cơ bản. Sau khi đăng ký thành công, người dùng được gán role "Author" nhưng chưa nhận token; hệ thống kích hoạt job gửi email chào mừng và email xác nhận bất đồng bộ qua Hangfire. Người dùng xác nhận email rồi đăng nhập để truy cập tài khoản.
 
-> **[DECISION 3A]** Auto-login sau đăng ký - trả đầy đủ tokens.
+> **[DECISION 3A — SUPERSEDED by FR-AUTH-008]** Đăng ký không cấp token; yêu cầu xác nhận email trước khi đăng nhập.
 > **[DECISION 5A]** Gửi email xác nhận sau khi đăng ký.
 
 **Preconditions:**

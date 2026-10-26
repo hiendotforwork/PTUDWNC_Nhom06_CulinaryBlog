@@ -68,17 +68,19 @@ public class GoogleLoginCommandHandler : IRequestHandler<GoogleLoginCommand, Aut
                 if (!existingUser.EmailConfirmed)
                 {
                     existingUser.EmailConfirmed = true;
-                    await _userRepository.UpdateAsync(existingUser, cancellationToken);
+                    var updateResult = await _userRepository.UpdateAsync(existingUser, cancellationToken);
+                    if (!updateResult.Succeeded) throw AuthException.InvalidCredentials();
                 }
 
                 // Link Google login to existing account
-                await _userRepository.AddLoginAsync(
+                var linkResult = await _userRepository.AddLoginAsync(
                     existingUser,
                     request.Provider,
                     request.ProviderKey,
                     request.DisplayName,
                     request.AvatarUrl
                 );
+                if (!linkResult.Succeeded) throw AuthException.InvalidCredentials();
             }
         }
 
