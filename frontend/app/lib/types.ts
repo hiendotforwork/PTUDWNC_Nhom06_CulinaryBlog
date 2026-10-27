@@ -139,6 +139,21 @@ export interface ResendEmailConfirmationRequest {
   email: string;
 }
 
+export interface PasswordResetRequest {
+  email: string;
+}
+
+export interface ResetPasswordRequest {
+  userId: string;
+  token: string;
+  newPassword: string;
+}
+
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
 export interface LoginRequest {
   email: string;
   password: string;
