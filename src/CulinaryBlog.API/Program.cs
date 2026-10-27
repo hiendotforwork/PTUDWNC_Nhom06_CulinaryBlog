@@ -93,10 +93,12 @@ builder.Services.AddScoped<IEmailService, EmailService>();
 if (isTesting)
 {
     builder.Services.AddSingleton<IEmailConfirmationResendLimiter, InMemoryEmailConfirmationResendLimiter>();
+    builder.Services.AddSingleton<IPasswordResetRequestLimiter, InMemoryPasswordResetRequestLimiter>();
 }
 else
 {
     builder.Services.AddSingleton<IEmailConfirmationResendLimiter, EmailConfirmationResendLimiter>();
+    builder.Services.AddSingleton<IPasswordResetRequestLimiter, PasswordResetRequestLimiter>();
 }
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<IRecipeRepository, RecipeRepository>();
