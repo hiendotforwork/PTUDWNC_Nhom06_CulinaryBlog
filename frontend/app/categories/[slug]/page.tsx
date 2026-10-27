@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useApp } from "../../context/AppContext";
 import { RecipeGrid } from "../../components/recipe/RecipeGrid";
+import { Pagination } from "../../components/ui/Pagination";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -31,7 +32,7 @@ export default function CategoryDetailPage({ params }: PageProps) {
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>("all");
   const [sortBy, setSortBy] = useState<string>("newest");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
-
+  const [page, setPage] = useState(1);
   const category = categories.find((c) => c.slug === slug);
 
   const getCategoryIcon = (iconName: string) => {
@@ -78,6 +79,12 @@ export default function CategoryDetailPage({ params }: PageProps) {
     return list;
   }, [categoryRecipes, sortBy]);
 
+  const totalPages = Math.ceil(sortedRecipes.length / 12);
+  const paginatedRecipes = useMemo(
+    () => sortedRecipes.slice((page - 1) * 12, page * 12),
+    [sortedRecipes, page],
+  );
+
   if (!category && slug !== "all") {
     notFound();
   }
@@ -108,7 +115,7 @@ export default function CategoryDetailPage({ params }: PageProps) {
                 {category?.name}
               </h1>
               <span className="px-3 py-1 rounded-full bg-[#FAF9F6] dark:bg-[#2F2B27] border border-[#DCD8D2] dark:border-[#3D3934] text-xs font-bold text-[#C98F7D]">
-                {categoryRecipes.length} công thức
+                {sortedRecipes.length} công thức
               </span>
             </div>
             <p className="text-sm text-[#8A817C] dark:text-[#A8A29E] max-w-2xl leading-relaxed">
@@ -127,7 +134,10 @@ export default function CategoryDetailPage({ params }: PageProps) {
           </div>
           <select
             value={selectedDifficulty}
-            onChange={(e) => setSelectedDifficulty(e.target.value)}
+            onChange={(e) => {
+              setSelectedDifficulty(e.target.value);
+              setPage(1);
+            }}
             className="h-9 px-3 text-xs rounded-full bg-[#FAF9F6] dark:bg-[#2F2B27] border border-[#DCD8D2] dark:border-[#3D3934] text-[#463F3A] dark:text-[#EAE6DF] focus:border-[#C98F7D] focus:outline-none cursor-pointer"
           >
             <option value="all">Tất cả</option>
@@ -177,10 +187,15 @@ export default function CategoryDetailPage({ params }: PageProps) {
 
       {/* Recipe Grid */}
       <RecipeGrid
-        recipes={sortedRecipes}
+        recipes={paginatedRecipes}
         viewMode={viewMode}
         emptyTitle={`Chưa có công thức cho danh mục ${category?.name}`}
         emptyDescription="Hãy là người đầu tiên đóng góp công thức thơm ngon vào danh mục này!"
+      />
+      <Pagination
+        currentPage={page}
+        totalPages={totalPages}
+        onPageChange={setPage}
       />
     </div>
   );

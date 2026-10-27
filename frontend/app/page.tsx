@@ -9,8 +9,6 @@ import {
   SlidersHorizontal,
   Grid,
   List,
-  ChevronLeft,
-  ChevronRight,
   Flame,
 } from "lucide-react";
 import { useApp } from "./context/AppContext";
@@ -18,6 +16,7 @@ import { CategoryStrip } from "./components/recipe/CategoryStrip";
 import { RecipeGrid } from "./components/recipe/RecipeGrid";
 import { Button } from "./components/ui/Button";
 import { Badge } from "./components/ui/Badge";
+import { Pagination } from "./components/ui/Pagination";
 
 export default function HomePage() {
   const { recipes, categories } = useApp();
@@ -360,46 +359,11 @@ export default function HomePage() {
           emptyDescription="Hãy thử nới lỏng các bộ lọc độ khó hoặc thời gian nấu để xem thêm công thức."
         />
 
-        {/* Pagination Bar */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-2 pt-6">
-            <button
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              aria-label="Trang trước"
-              className="w-9 h-9 rounded-full bg-white dark:bg-[#24211E] border border-[#DCD8D2] dark:border-[#3D3934] flex items-center justify-center text-[#463F3A] dark:text-[#EAE6DF] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#F4F3EE] transition-colors"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-
-            {Array.from({ length: totalPages }).map((_, i) => {
-              const page = i + 1;
-              const isActive = currentPage === page;
-              return (
-                <button
-                  key={page}
-                  onClick={() => setCurrentPage(page)}
-                  className={`w-9 h-9 rounded-full text-xs font-semibold transition-all ${
-                    isActive
-                      ? "bg-[#C98F7D] text-white shadow-sm ring-2 ring-[#C98F7D]/30"
-                      : "bg-white dark:bg-[#24211E] text-[#463F3A] dark:text-[#EAE6DF] border border-[#DCD8D2] dark:border-[#3D3934] hover:border-[#C98F7D]"
-                  }`}
-                >
-                  {page}
-                </button>
-              );
-            })}
-
-            <button
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-              aria-label="Trang sau"
-              className="w-9 h-9 rounded-full bg-white dark:bg-[#24211E] border border-[#DCD8D2] dark:border-[#3D3934] flex items-center justify-center text-[#463F3A] dark:text-[#EAE6DF] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#F4F3EE] transition-colors"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        )}
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+        />
       </div>
     </div>
   );
