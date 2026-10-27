@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Lock } from "lucide-react";
@@ -9,29 +9,33 @@ import { Button } from "../components/ui/Button";
 import { resetPassword } from "../lib/api";
 import * as auth from "../lib/auth";
 
-const subscribeToHash = (callback: () => void) => {
-  window.addEventListener("hashchange", callback);
-  return () => window.removeEventListener("hashchange", callback);
-};
-
 export default function ResetPasswordPage() {
   const router = useRouter();
-  const hash = useSyncExternalStore(subscribeToHash, () => window.location.hash, () => "");
-  const { userId, token } = useMemo(() => {
-    const params = new URLSearchParams(hash.slice(1));
-    return { userId: params.get("userId") || "", token: params.get("token") || "" };
-  }, [hash]);
+  const hasReadResetLink = useRef(false);
+  const [resetLink, setResetLink] = useState<{ userId: string; token: string } | null>(null);
+  const [isReadingLink, setIsReadingLink] = useState(true);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [invalidToken, setInvalidToken] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [error, setError] = useState("");
-  const invalidLink = invalidToken || !userId || !token;
+  const invalidLink = !isReadingLink && (!resetLink || invalidToken);
 
   useEffect(() => {
-    if (hash) window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
-  }, [hash]);
+    if (hasReadResetLink.current) return;
+    hasReadResetLink.current = true;
+
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const userId = params.get("userId");
+    const token = params.get("token");
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+
+    queueMicrotask(() => {
+      if (userId && token) setResetLink({ userId, token });
+      setIsReadingLink(false);
+    });
+  }, []);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -39,10 +43,11 @@ export default function ResetPasswordPage() {
       setError("Mật khẩu xác nhận không khớp.");
       return;
     }
+    if (!resetLink) return;
     setError("");
     setIsLoading(true);
     try {
-      await resetPassword({ userId, token, newPassword });
+      await resetPassword({ ...resetLink, newPassword });
       setCompleted(true);
       auth.clearAuth();
       router.push("/login");
@@ -61,7 +66,9 @@ export default function ResetPasswordPage() {
         <div className="double-bezel-inner p-8 sm:p-10 flex flex-col gap-6">
           <div className="text-center flex flex-col gap-2">
             <h1 className="font-serif text-2xl font-bold text-[#463F3A] dark:text-[#F5F3EF]">Đặt lại mật khẩu</h1>
-            {invalidLink ? (
+            {isReadingLink ? (
+              <p role="status" className="text-sm text-[#8A817C]">Đang kiểm tra liên kết...</p>
+            ) : invalidLink ? (
               <p role="alert" className="text-sm text-[#8A817C]">Liên kết không hợp lệ hoặc đã hết hạn. Hãy yêu cầu một liên kết mới.</p>
             ) : completed ? (
               <p role="status" className="text-sm text-[#385938] dark:text-green-300">Mật khẩu đã được cập nhật. Bạn có thể đăng nhập bằng mật khẩu mới.</p>
@@ -69,7 +76,7 @@ export default function ResetPasswordPage() {
               <p className="text-sm text-[#8A817C]">Tạo mật khẩu mới cho tài khoản của bạn.</p>
             )}
           </div>
-          {!invalidLink && !completed && (
+          {!isReadingLink && !invalidLink && !completed && (
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
               <Input
                 label="Mật khẩu mới"
