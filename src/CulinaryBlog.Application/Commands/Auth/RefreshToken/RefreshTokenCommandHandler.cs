@@ -69,6 +69,12 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, A
                 throw AuthException.InvalidCredentials();
             }
 
+            if (!user.EmailConfirmed)
+            {
+                _logger.LogWarning("User {UserId} attempted token refresh without confirmed email", user.Id);
+                throw AuthException.EmailNotConfirmed();
+            }
+
             // Get user roles
             var roles = await _userRepository.GetRolesAsync(user);
 

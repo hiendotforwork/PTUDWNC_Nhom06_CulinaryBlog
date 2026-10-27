@@ -11,6 +11,7 @@ public record SignInResult(
 
 public interface IUserRepository
 {
+    Task<ApplicationUser?> FindByIdAsync(string userId, CancellationToken cancellationToken = default);
     Task<ApplicationUser?> FindByEmailAsync(string email, CancellationToken cancellationToken = default);
     Task<ApplicationUser?> FindByUserNameAsync(string userName, CancellationToken cancellationToken = default);
     Task<(bool Succeeded, IEnumerable<string> Errors)> CreateAsync(ApplicationUser user, string password);
@@ -20,4 +21,8 @@ public interface IUserRepository
     Task<SignInResult> CheckPasswordSignInAsync(ApplicationUser user, string password, CancellationToken cancellationToken = default);
     Task<ApplicationUser?> FindByLoginAsync(string provider, string providerKey, CancellationToken cancellationToken = default);
     Task<(bool Succeeded, IEnumerable<string> Errors)> AddLoginAsync(ApplicationUser user, string provider, string providerKey, string? displayName, string? avatarUrl);
+    Task<(bool Succeeded, IEnumerable<string> Errors)> UpdateAsync(ApplicationUser user, CancellationToken cancellationToken = default);
+    Task<string> GenerateEmailConfirmationTokenAsync(ApplicationUser user, CancellationToken cancellationToken = default);
+    Task<bool> VerifyEmailConfirmationTokenAsync(ApplicationUser user, string token, CancellationToken cancellationToken = default);
+    Task<(bool Succeeded, IEnumerable<string> Errors)> ConfirmEmailAsync(ApplicationUser user, string token, CancellationToken cancellationToken = default);
 }

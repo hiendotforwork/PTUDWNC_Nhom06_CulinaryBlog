@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Suspense, useState } from "react";
+import React, { Suspense, useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -14,8 +14,14 @@ import {
   AtSign,
   ChevronRight,
   Save,
+  AlertCircle,
+  Upload,
+  Trash2,
 } from "lucide-react";
-import { useApp } from "../context/AppContext";
+import { useApp, DEFAULT_AVATAR } from "../context/AppContext";
+import { getCurrentUser, uploadAvatar, deleteAvatar, mediaUrl } from "../lib/api";
+import * as auth from "../lib/auth";
+import { User } from "../lib/types";
 import { Input, Textarea } from "../components/ui/Input";
 import { Button } from "../components/ui/Button";
 import { RecipeGrid } from "../components/recipe/RecipeGrid";
@@ -24,14 +30,69 @@ function ProfileContent() {
   const searchParams = useSearchParams();
   const initialTab = searchParams.get("tab") === "recipes" ? "recipes" : "profile";
 
-  const { currentUser, recipes, favorites, updateProfile, showToast } = useApp();
+  const { currentUser, setCurrentUser, recipes, favorites, updateProfile, showToast } = useApp();
 
   const [activeTab, setActiveTab] = useState<"profile" | "recipes" | "favorites">(initialTab);
   const [displayName, setDisplayName] = useState(currentUser?.displayName || "");
   const [bio, setBio] = useState(currentUser?.bio || "");
-  const [avatarUrl, setAvatarUrl] = useState(currentUser?.avatarUrl || "");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [isRemovingAvatar, setIsRemovingAvatar] = useState(false);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+  const [profileError, setProfileError] = useState<{ is404: boolean; message: string } | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const currentUserId = currentUser?.id;
+
+  useEffect(() => {
+    if (!currentUserId) return;
+    let ignore = false;
+    getCurrentUser()
+      .then((profile) => {
+        if (ignore) return;
+        const mappedUser: User = {
+          id: profile.id,
+          displayName: profile.displayName,
+          userName: profile.userName,
+          email: profile.email,
+          avatarUrl: (profile.avatarUrl ? mediaUrl(profile.avatarUrl) : undefined) || DEFAULT_AVATAR,
+          bio: profile.bio || undefined,
+          roles: profile.roles,
+          role: profile.roles.includes("Admin") ? "Admin" : "User",
+          createdAt: profile.createdAt,
+        };
+        setCurrentUser(mappedUser);
+        setDisplayName(profile.displayName);
+        setBio(profile.bio || "");
+        setIsLoadingProfile(false);
+      })
+      .catch((err: unknown) => {
+        if (ignore) return;
+        const apiError = err as { statusCode?: number; message?: string };
+        if (apiError.statusCode === 404) {
+          setProfileError({
+            is404: true,
+            message: "Hồ sơ của bạn không tồn tại hoặc đã bị xóa trên hệ thống.",
+          });
+        } else {
+          setProfileError({
+            is404: false,
+            message: apiError.message || "Không thể tải thông tin hồ sơ từ máy chủ. Vui lòng kiểm tra kết nối mạng và thử lại.",
+          });
+        }
+        setIsLoadingProfile(false);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [currentUserId, retryCount, setCurrentUser]);
+
+  const handleRetry = useCallback(() => {
+    setIsLoadingProfile(true);
+    setProfileError(null);
+    setRetryCount((prev) => prev + 1);
+  }, []);
 
   if (!currentUser) {
     return (
@@ -61,6 +122,57 @@ function ProfileContent() {
     );
   }
 
+  if (isLoadingProfile) {
+    return (
+      <div className="max-w-md mx-auto py-16 px-4 text-center">
+        <div className="double-bezel">
+          <div className="double-bezel-inner p-8 flex flex-col items-center gap-4">
+            <div className="animate-spin w-8 h-8 border-2 border-[#C98F7D] border-t-transparent rounded-full" />
+            <p className="text-xs text-[#8A817C]">Đang tải thông tin hồ sơ...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (profileError) {
+    if (profileError.is404) {
+      return (
+        <div className="max-w-md mx-auto py-16 px-4 text-center">
+          <div className="double-bezel">
+            <div className="double-bezel-inner p-8 flex flex-col items-center gap-4">
+              <UserIcon className="w-12 h-12 text-[#8A817C]" />
+              <h2 className="font-serif text-xl font-bold">Hồ sơ không tồn tại</h2>
+              <p className="text-xs text-[#8A817C]">{profileError.message}</p>
+              <div className="mt-2">
+                <Button variant="primary" size="md" onClick={handleRetry}>
+                  Thử lại
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="max-w-md mx-auto py-16 px-4 text-center">
+        <div className="double-bezel">
+          <div className="double-bezel-inner p-8 flex flex-col items-center gap-4">
+            <AlertCircle className="w-12 h-12 text-[#C98F7D]" />
+            <h2 className="font-serif text-xl font-bold">Lỗi tải hồ sơ</h2>
+            <p className="text-xs text-[#8A817C]">{profileError.message}</p>
+            <div className="mt-2">
+              <Button variant="primary" size="md" onClick={handleRetry}>
+                Thử lại
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Filter recipes created by current user
   const myRecipes = recipes.filter((r) => r.author.id === currentUser.id);
 
@@ -73,17 +185,108 @@ function ProfileContent() {
   // Favorite recipes
   const favoriteRecipes = recipes.filter((r) => favorites.includes(r.id));
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!displayName.trim()) {
       showToast("error", "Tên hiển thị không được để trống.");
       return;
     }
     setIsSaving(true);
-    setTimeout(() => {
-      updateProfile({ displayName, bio, avatarUrl });
+    try {
+      const savedUser = await updateProfile({
+        displayName,
+        bio,
+      });
+      setDisplayName(savedUser.displayName);
+      setBio(savedUser.bio ?? "");
+    } catch (err: unknown) {
+      const apiError = err as { message?: string };
+      showToast("error", apiError.message || "Lưu thông tin hồ sơ thất bại.");
+    } finally {
       setIsSaving(false);
-    }, 400);
+    }
+  };
+
+  const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp", "image/avif"];
+    if (!allowedTypes.includes(file.type)) {
+      showToast("error", "Chỉ chấp nhận ảnh định dạng JPEG, PNG, WebP hoặc AVIF.");
+      e.target.value = "";
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      showToast("error", "Dung lượng ảnh không được vượt quá 5 MB.");
+      e.target.value = "";
+      return;
+    }
+
+    if (file.size < 1) {
+      showToast("error", "Tệp ảnh không hợp lệ.");
+      e.target.value = "";
+      return;
+    }
+
+    setIsUploadingAvatar(true);
+    try {
+      const { avatarUrl: rawAvatarUrl } = await uploadAvatar(file);
+      const newAvatarUrl = mediaUrl(rawAvatarUrl) || DEFAULT_AVATAR;
+
+      if (currentUser) {
+        const updatedUser: User = {
+          ...currentUser,
+          avatarUrl: newAvatarUrl,
+        };
+        setCurrentUser(updatedUser);
+
+        const stored = auth.getStoredUser();
+        if (stored) {
+          auth.setStoredUser({
+            ...stored,
+            avatarUrl: newAvatarUrl,
+            createdAt: currentUser.createdAt || stored.createdAt,
+          });
+        }
+      }
+      showToast("success", "Cập nhật ảnh đại diện thành công!");
+    } catch (err: unknown) {
+      const apiError = err as { message?: string };
+      showToast("error", apiError.message || "Tải ảnh đại diện thất bại.");
+    } finally {
+      setIsUploadingAvatar(false);
+      e.target.value = "";
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    if (!currentUser) return;
+    setIsRemovingAvatar(true);
+    try {
+      await deleteAvatar();
+      const updatedUser: User = {
+        ...currentUser,
+        avatarUrl: DEFAULT_AVATAR,
+      };
+      setCurrentUser(updatedUser);
+
+      const stored = auth.getStoredUser();
+      if (stored) {
+        auth.setStoredUser({
+          ...stored,
+          avatarUrl: undefined,
+          createdAt: currentUser.createdAt || stored.createdAt,
+        });
+      }
+      showToast("success", "Đã xóa ảnh đại diện.");
+    } catch (err: unknown) {
+      const apiError = err as { message?: string };
+      showToast("error", apiError.message || "Xóa ảnh đại diện thất bại.");
+    } finally {
+      setIsRemovingAvatar(false);
+    }
   };
 
   const formattedDate = new Date(currentUser.createdAt).toLocaleDateString("vi-VN", {
@@ -225,13 +428,51 @@ function ProfileContent() {
                 helperText="Tối đa 500 ký tự."
               />
 
-              <Input
-                label="Đường dẫn ảnh đại diện (URL)"
-                type="url"
-                value={avatarUrl}
-                onChange={(e) => setAvatarUrl(e.target.value)}
-                helperText="Nhập đường dẫn ảnh trực tuyến (HTTPS)."
-              />
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-bold text-[#463F3A] dark:text-[#F5F3EF]">
+                  Ảnh đại diện
+                </label>
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 rounded-2xl overflow-hidden relative border-2 border-[#E0AFA0] shrink-0">
+                    <Image
+                      src={currentUser.avatarUrl || DEFAULT_AVATAR}
+                      alt={currentUser.displayName}
+                      fill
+                      className="object-cover"
+                    />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#C98F7D] hover:bg-[#B87E6C] text-white text-xs font-medium cursor-pointer transition-colors">
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>{isUploadingAvatar ? "Đang tải lên..." : "Tải ảnh mới"}</span>
+                      <input
+                        type="file"
+                        aria-label="Chọn tệp ảnh đại diện"
+                        className="sr-only"
+                        accept="image/jpeg,image/png,image/webp,image/avif"
+                        disabled={isUploadingAvatar || isRemovingAvatar}
+                        onChange={handleAvatarFileChange}
+                      />
+                    </label>
+                    {currentUser.avatarUrl && currentUser.avatarUrl !== DEFAULT_AVATAR && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={isUploadingAvatar || isRemovingAvatar}
+                        isLoading={isRemovingAvatar}
+                        onClick={handleRemoveAvatar}
+                        leftIcon={<Trash2 className="w-3.5 h-3.5 text-red-500" />}
+                      >
+                        Gỡ ảnh
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                <p className="text-[11px] text-[#8A817C]">
+                  Định dạng hỗ trợ: JPEG, PNG, WebP, AVIF. Dung lượng tối đa: 5 MB.
+                </p>
+              </div>
 
               {/* Readonly fields as per SRS requirement */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-[#DCD8D2]/40">

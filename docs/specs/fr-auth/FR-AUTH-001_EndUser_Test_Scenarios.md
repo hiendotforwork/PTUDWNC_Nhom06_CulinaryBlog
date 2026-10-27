@@ -1,11 +1,17 @@
 # Kịch bản Kiểm thử Người dùng Cuối (End-User Test Scenarios) — FR-AUTH-001: Đăng ký Tài khoản
 
-> **Tài liệu tham chiếu:** [`FR-AUTH-001_Plan.md`](./FR-AUTH-001_Plan.md), [`FR-AUTH_APIContract.md`](./FR-AUTH_APIContract.md), [`UI_DESIGN_SPECIFICATION.md`](../UI_DESIGN_SPECIFICATION.md)  
-> **Phân hệ:** Quản lý Xác thực (FR-AUTH)  
-> **Chức năng:** FR-AUTH-001 Đăng ký tài khoản (User Registration)  
-> **Đối tượng áp dụng:** QA Tester, End-User, Stakeholder, Product Owner  
-> **Phiên bản:** 1.0.0  
-> **Ngày lập:** 23/09/2026  
+> **Tài liệu tham chiếu:** [`FR-AUTH-001_Plan.md`](./FR-AUTH-001_Plan.md), [`FR-AUTH_APIContract.md`](./FR-AUTH_APIContract.md), [`UI_DESIGN_SPECIFICATION.md`](../UI_DESIGN_SPECIFICATION.md)
+> **Phân hệ:** Quản lý Xác thực (FR-AUTH)
+> **Chức năng:** FR-AUTH-001 Đăng ký tài khoản (User Registration)
+> **Đối tượng áp dụng:** QA Tester, End-User, Stakeholder, Product Owner
+> **Phiên bản:** 1.1.0
+> **Ngày cập nhật:** 20/10/2026 (Cập nhật theo FR-AUTH-008 Email Verification)
+
+> ⚠️ **LƯU Ý QUAN TRỌNG (FR-AUTH-008 EMAIL VERIFICATION):**
+> Quy trình đăng ký hiện tại **không còn tự động phát hành token hay auto-login ngay lập tức**:
+> - Sau khi gửi form đăng ký hợp lệ, màn hình chuyển sang trạng thái **"Xác nhận địa chỉ email của bạn"** với nút gửi lại (cooldown 60 giây).
+> - Không có access token hay refresh token nào được lưu trong Local Storage tại bước này.
+> - Người dùng cần click liên kết xác nhận gửi về email (`/verify-email#userId=...&token=...`) và nhấn nút xác nhận để kích hoạt tài khoản và nhận phiên đăng nhập hợp lệ.
 
 ---
 
@@ -81,31 +87,24 @@
   3. Nhấn nút **"Đăng ký ngay"**.
 - **Kết quả mong đợi:**
   - Nút chuyển sang trạng thái đang tải (Loading spinner).
-  - Xuất hiện Toast thông báo màu xanh lá (Success): *"Đăng ký thành công! Chào mừng Hoàng Minh An"*.
-  - Trình duyệt tự động chuyển hướng về trang chủ `http://localhost:3000/`.
-  - Trên thanh Navbar hiển thị tên `Hoàng Minh An` và avatar người dùng đăng nhập.
+  - Giao diện chuyển sang màn hình **"Xác nhận địa chỉ email của bạn"** hiển thị email đã đăng ký (`minhan.chef@culinaryblog.vn`).
+  - Hiển thị hướng dẫn kiểm tra hộp thư và nút "Gửi lại email xác nhận" (với bộ đếm cooldown 60 giây).
+  - Không có access token hay refresh token nào được lưu trong Local Storage.
 
 ---
 
-#### 📝 TC-02: Kiểm tra lưu trữ Token trong Local Storage
-- **Mục tiêu:** Xác minh JWT Token và dữ liệu người dùng được lưu trữ an toàn, đúng khóa quy định.
+#### 📝 TC-02: Kiểm tra xác nhận email và lưu trữ Token trong Local Storage
+- **Mục tiêu:** Xác minh quy trình click liên kết xác nhận, người dùng nhấn nút xác nhận và hệ thống phát hành token lưu trữ an toàn.
 - **Các bước thực hiện:**
-  1. Sau khi hoàn thành **TC-01**, nhấn phím **F12** để mở DevTools.
-  2. Chọn tab **Application** $\rightarrow$ chọn **Local Storage** $\rightarrow$ chọn `http://localhost:3000`.
+  1. Mở email xác nhận gửi tới `minhan.chef@culinaryblog.vn` và click vào liên kết xác nhận dạng `http://localhost:3000/verify-email#userId=...&token=...`.
+  2. Quan sát: URL hash được tự động làm sạch khỏi thanh địa chỉ.
+  3. Nhấn nút **"Xác nhận email"**.
+  4. Sau khi hoàn tất và tự động đăng nhập về trang chủ, nhấn phím **F12** để mở DevTools.
+  5. Chọn tab **Application** $\rightarrow$ chọn **Local Storage** $\rightarrow$ chọn `http://localhost:3000`.
 - **Kết quả mong đợi:**
   - Tồn tại khóa `auth_access_token`: chuỗi mã hóa JWT hợp lệ (có 3 phần phân tách bởi dấu chấm `.`).
   - Tồn tại khóa `auth_refresh_token`: chuỗi ký tự ngẫu nhiên Base64Url.
-  - Tồn tại khóa `auth_user`: chứa JSON có cấu trúc:
-    ```json
-    {
-      "id": "...",
-      "displayName": "Hoàng Minh An",
-      "userName": "minhan_chef",
-      "email": "minhan.chef@culinaryblog.vn",
-      "roles": ["Author"],
-      "createdAt": "..."
-    }
-    ```
+  - Tồn tại khóa `auth_user`: chứa JSON có cấu trúc người dùng đã xác nhận.
 
 ---
 

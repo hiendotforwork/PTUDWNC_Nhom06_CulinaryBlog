@@ -104,4 +104,18 @@ public sealed class MinioFileStorageTests
         using var validated = await ImageFile.ReadAsync(source, mime, extension, default);
         Assert.Equal(0, validated.Position);
     }
+
+    [Fact]
+    public void IsOwnedUrl_AcceptsValidBucketUrlAndRejectsAnotherHostOrMalformedKey()
+    {
+        Assert.True(Storage.IsOwnedUrl("http://localhost:9000/culinary-blog/avatars/user1/image.png"));
+        Assert.True(Storage.IsOwnedUrl("http://localhost:9000/culinary-blog/recipes/123/image.webp"));
+
+        Assert.False(Storage.IsOwnedUrl("http://evil.test/culinary-blog/avatars/user1/image.png"));
+        Assert.False(Storage.IsOwnedUrl("http://localhost:9000/other/avatars/user1/image.png"));
+        Assert.False(Storage.IsOwnedUrl("http://localhost:9000/culinary-blog/avatars/../image.png"));
+        Assert.False(Storage.IsOwnedUrl("http://localhost:9000/culinary-blog/avatars/user1/image.exe"));
+        Assert.False(Storage.IsOwnedUrl(""));
+        Assert.False(Storage.IsOwnedUrl(null!));
+    }
 }

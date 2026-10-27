@@ -1,11 +1,15 @@
 using System.Xml.Linq;
 using CulinaryBlog.Application.Interfaces;
+using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Domain.Enums;
 using CulinaryBlog.Infrastructure.Data;
 using CulinaryBlog.Infrastructure.Storage;
 using Hangfire;
 using ImageMagick;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Minio;
 using Minio.DataModel.Args;
@@ -30,6 +34,65 @@ public sealed class WelcomeEmailJob(ApplicationDbContext db, IEmailService email
             logger.LogInformation("Welcome email task {TaskId} completed", taskId);
         }
         catch (Exception ex) { logger.LogError(ex, "Welcome email task {TaskId} failed", taskId); throw; }
+    }
+}
+
+public sealed class EmailVerificationJob(
+    ApplicationDbContext db,
+    UserManager<ApplicationUser> userManager,
+    IEmailService email,
+    IConfiguration configuration,
+    IWebHostEnvironment environment,
+    ILogger<EmailVerificationJob> logger)
+{
+    [AutomaticRetry(Attempts = 3, DelaysInSeconds = new[] { 60, 300, 1800 }, OnAttemptsExceeded = AttemptsExceededAction.Fail)]
+    public async Task RunAsync(Guid taskId, CancellationToken ct)
+    {
+        using var activity = ObservabilityTelemetry.Activities.StartActivity("job.email-verification");
+
+        var baseUrl = configuration["Site:BaseUrl"];
+        if (environment.IsProduction())
+        {
+            if (string.IsNullOrWhiteSpace(baseUrl))
+                throw new InvalidOperationException("Site:BaseUrl is required in production.");
+            if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var prodSite) || prodSite.Scheme != "https" ||
+                !string.IsNullOrEmpty(prodSite.UserInfo) || !string.IsNullOrEmpty(prodSite.Query) || !string.IsNullOrEmpty(prodSite.Fragment))
+                throw new InvalidOperationException("Site:BaseUrl must be an absolute HTTPS URL without credentials, query or fragment in production.");
+        }
+        else
+        {
+            baseUrl ??= "http://localhost:3000";
+            if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var devSite) || devSite.Scheme is not ("http" or "https") ||
+                !string.IsNullOrEmpty(devSite.UserInfo) || !string.IsNullOrEmpty(devSite.Query) || !string.IsNullOrEmpty(devSite.Fragment))
+                throw new InvalidOperationException("Site:BaseUrl must be an absolute HTTP(S) URL without credentials, query or fragment.");
+        }
+
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var task = await BackgroundTaskExecution.LockAsync(db, taskId, "email-verification", ct);
+        if (task is null) return;
+
+        var user = await db.Users.SingleOrDefaultAsync(x => x.Id == task.TargetId, ct);
+        if (user is null || user.EmailConfirmed || string.IsNullOrWhiteSpace(user.Email))
+        {
+            await BackgroundTaskExecution.CompleteAsync(db, taskId, ct);
+            await tx.CommitAsync(ct);
+            return;
+        }
+
+        try
+        {
+            var token = await userManager.GenerateEmailConfirmationTokenAsync(user);
+            var link = $"{baseUrl.TrimEnd('/')}/verify-email#userId={Uri.EscapeDataString(user.Id)}&token={Uri.EscapeDataString(token)}";
+            await email.SendEmailConfirmationAsync(user.Email, user.DisplayName, link, ct);
+            await BackgroundTaskExecution.CompleteAsync(db, taskId, ct);
+            await tx.CommitAsync(ct);
+            logger.LogInformation("Email verification task {TaskId} completed for recipient", taskId);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Email verification task {TaskId} failed", taskId);
+            throw;
+        }
     }
 }
 

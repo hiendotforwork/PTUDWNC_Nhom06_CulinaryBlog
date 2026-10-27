@@ -16,6 +16,8 @@ import {
   RecipeStatus,
   RecipeStep,
   RegisterRequest,
+  RegistrationPendingResponse,
+  UserProfileResponse,
 } from "./types";
 import { getToken, refreshAccessToken, clearAuth } from "./auth";
 
@@ -23,7 +25,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5058";
 const API_ORIGIN = API_BASE.replace(/\/$/, "");
 
 // Chuyển URL ảnh tương đối của API thành URL đầy đủ để frontend ở cổng 3000 tải được ảnh.
-function mediaUrl(url?: string): string {
+export function mediaUrl(url?: string | null): string {
   if (!url) return "";
   return url.startsWith("/") ? `${API_ORIGIN}${url}` : url;
 }
@@ -82,11 +84,26 @@ export type ImageResponse = ApiImage & { orderIndex: number; rowVersion: string 
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
+    const parsedErrors: Array<{ field: string; message: string }> | undefined = Array.isArray(errorData.errors)
+      ? errorData.errors.map((e: { propertyName?: string; field?: string; errorMessage?: string; message?: string }) => ({
+          field: e.propertyName || e.field || "",
+          message: e.errorMessage || e.message || "",
+        }))
+      : errorData.errors && typeof errorData.errors === "object"
+        ? Object.entries(errorData.errors as Record<string, unknown>).flatMap(([field, msgs]) =>
+            Array.isArray(msgs)
+              ? msgs.map((msg) => ({ field, message: String(msg) }))
+              : [{ field, message: String(msgs) }]
+          )
+        : undefined;
+
+    const fieldMessage = parsedErrors?.[0]?.message;
+
     const error: ApiError = {
       statusCode: res.status,
       errorCode: errorData.extensions?.code || errorData.errorCode,
-      message: errorData.detail || errorData.title || errorData.message || (res.status === 500 ? "Lỗi server, thử lại sau." : "Lỗi không xác định từ máy chủ."),
-      errors: errorData.errors,
+      message: fieldMessage || errorData.detail || errorData.title || errorData.message || (res.status === 500 ? "Lỗi server, thử lại sau." : "Lỗi không xác định từ máy chủ."),
+      errors: parsedErrors,
       extensions: errorData.extensions,
     };
     throw error;
@@ -95,14 +112,47 @@ async function handleResponse<T>(res: Response): Promise<T> {
 }
 
 // Chức năng: gửi yêu cầu đăng ký tài khoản.
-// Input: data - thông tin đăng ký. Output: token và thông tin người dùng.
-export async function register(data: RegisterRequest): Promise<AuthResponse> {
+// Input: data - thông tin đăng ký. Output: trạng thái chờ xác thực email.
+export async function register(data: RegisterRequest): Promise<RegistrationPendingResponse> {
   const res = await fetch(`${API_BASE}/api/v1/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
+  return handleResponse<RegistrationPendingResponse>(res);
+}
+
+// Chức năng: gửi yêu cầu xác nhận email tài khoản.
+// Input: userId, token. Output: token phiên đăng nhập và thông tin người dùng.
+export async function confirmEmail(userId: string, token: string): Promise<AuthResponse> {
+  const res = await fetch(`${API_BASE}/api/v1/auth/email/confirm`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId, token }),
+  });
   return handleResponse<AuthResponse>(res);
+}
+
+export async function getEmailConfirmationStatus(userId: string, token: string): Promise<{ confirmed: boolean }> {
+  const res = await fetch(`${API_BASE}/api/v1/auth/email/status`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId, token }),
+  });
+  return handleResponse<{ confirmed: boolean }>(res);
+}
+
+// Chức năng: gửi yêu cầu gửi lại email xác nhận tài khoản.
+// Input: email. Output: Promise<void>.
+export async function resendEmailConfirmation(email: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/v1/auth/email/resend`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  if (!res.ok) {
+    await handleResponse<void>(res);
+  }
 }
 
 // Chức năng: gửi yêu cầu đăng nhập tài khoản.
@@ -172,6 +222,50 @@ async function authFetch(url: string, init: RequestInit = {}, json = false): Pro
   }
 
   return res;
+}
+
+// Chức năng: lấy thông tin hồ sơ của người dùng hiện tại từ API xác thực.
+// Input: không có. Output: UserProfileResponse của người dùng đăng nhập.
+export async function getCurrentUser(): Promise<UserProfileResponse> {
+  const res = await authFetch(`${API_BASE}/api/v1/auth/me`);
+  return handleResponse<UserProfileResponse>(res);
+}
+
+// Chức năng: cập nhật tên hiển thị và tiểu sử qua API xác thực.
+// Input: data - displayName và bio tùy chọn. Output: UserProfileResponse đã cập nhật.
+export async function updateProfileApi(data: { displayName?: string; bio?: string }): Promise<UserProfileResponse> {
+  const payload: { displayName?: string; bio?: string } = {};
+  if (data.displayName !== undefined) payload.displayName = data.displayName;
+  if (data.bio !== undefined) payload.bio = data.bio;
+
+  const res = await authFetch(`${API_BASE}/api/v1/auth/me`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  }, true);
+  return handleResponse<UserProfileResponse>(res);
+}
+
+// Chức năng: tải ảnh đại diện lên máy chủ qua endpoint xác thực.
+// Input: file - tệp ảnh. Output: đối tượng chứa avatarUrl.
+export async function uploadAvatar(file: File): Promise<{ avatarUrl: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await authFetch(`${API_BASE}/api/v1/users/me/avatar`, {
+    method: "POST",
+    body: form,
+  }, false);
+  return handleResponse<{ avatarUrl: string }>(res);
+}
+
+// Chức năng: xóa ảnh đại diện của người dùng hiện tại.
+// Input: không có. Output: Task hoàn tất khi xóa thành công (204).
+export async function deleteAvatar(): Promise<void> {
+  const res = await authFetch(`${API_BASE}/api/v1/users/me/avatar`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    await handleResponse<never>(res);
+  }
 }
 
 // Chức năng: đổi mã độ khó từ API sang kiểu hiển thị.

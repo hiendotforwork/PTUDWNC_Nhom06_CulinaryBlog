@@ -8,6 +8,8 @@ using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authentication.OAuth;
 using System.Text.Json;
 using CulinaryBlog.Application.Recipes.Validation;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using System.Text;
 using System.Threading.RateLimiting;
 using CulinaryBlog.API.Middleware;
@@ -74,12 +76,28 @@ builder.Services.AddIdentityCore<AuthApplicationUser>(options =>
     options.User.RequireUniqueEmail = true;
 })
 .AddRoles<IdentityRole>()
-.AddEntityFrameworkStores<ApplicationDbContext>();
+.AddEntityFrameworkStores<ApplicationDbContext>()
+.AddDefaultTokenProviders();
+
+// Configure 24-hour token lifespan for Identity DataProtection token provider (email confirmation).
+// Note: If other token purposes are added in the future, be aware they share this 24-hour DataProtection lifespan.
+builder.Services.Configure<DataProtectionTokenProviderOptions>(options =>
+{
+    options.TokenLifespan = TimeSpan.FromHours(24);
+});
 
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
+if (isTesting)
+{
+    builder.Services.AddSingleton<IEmailConfirmationResendLimiter, InMemoryEmailConfirmationResendLimiter>();
+}
+else
+{
+    builder.Services.AddSingleton<IEmailConfirmationResendLimiter, EmailConfirmationResendLimiter>();
+}
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<IRecipeRepository, RecipeRepository>();
 builder.Services.AddScoped<IRecipeCommandRepository, RecipeCommandRepository>();
@@ -116,6 +134,27 @@ builder.Services.AddAuthentication(options =>
         ValidAudience = jwtAudience,
         ClockSkew = TimeSpan.Zero
     };
+    options.Events = new JwtBearerEvents
+    {
+        OnTokenValidated = async context =>
+        {
+            var userId = context.Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                ?? context.Principal?.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
+
+            if (string.IsNullOrEmpty(userId))
+            {
+                context.Fail("User ID claim missing.");
+                return;
+            }
+
+            var userManager = context.HttpContext.RequestServices.GetRequiredService<UserManager<AuthApplicationUser>>();
+            var user = await userManager.FindByIdAsync(userId);
+            if (user == null || !user.IsActive || !user.EmailConfirmed)
+            {
+                context.Fail("User not found, inactive, or email not confirmed.");
+            }
+        }
+    };
 })
 .AddCookie(IdentityConstants.ExternalScheme, options =>
 {
@@ -137,6 +176,12 @@ builder.Services.AddAuthentication(options =>
     };
     options.Events.OnCreatingTicket = context =>
     {
+        if (context.User.TryGetProperty("email_verified", out var emailVerifiedProp))
+        {
+            var isVerified = emailVerifiedProp.ValueKind == JsonValueKind.True
+                || (emailVerifiedProp.ValueKind == JsonValueKind.String && bool.TryParse(emailVerifiedProp.GetString(), out var b) && b);
+            context.Identity?.AddClaim(new Claim("email_verified", isVerified ? "true" : "false"));
+        }
         return Task.CompletedTask;
     };
 });
@@ -159,6 +204,11 @@ builder.Services.AddRateLimiter(options =>
         RateLimitPartition.GetFixedWindowLimiter(
             context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
             _ => new FixedWindowRateLimiterOptions { PermitLimit = refreshPermitLimit, Window = TimeSpan.FromMinutes(1) }));
+    var resendPermitLimit = isTesting ? 1000 : 5;
+    options.AddPolicy("ResendEmailRateLimit", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
+            _ => new FixedWindowRateLimiterOptions { PermitLimit = resendPermitLimit, Window = TimeSpan.FromMinutes(1) }));
 });
 
 builder.Services.AddControllers().ConfigureApiBehaviorOptions(options =>

@@ -278,14 +278,15 @@ public sealed class JobsObservabilityDatabaseTests
             email = name + "@example.invalid", userName = name, displayName = "<Welcome Test>", password = "Password123!"
         });
         response.EnsureSuccessStatusCode();
-        var auth = (await response.Content.ReadFromJsonAsync<CulinaryBlog.Application.DTOs.Auth.AuthResponse>())!;
+        var pending = (await response.Content.ReadFromJsonAsync<CulinaryBlog.Application.DTOs.Auth.RegistrationPendingResponse>())!;
         await using var db = Database();
+        var user = await db.Users.FirstAsync(u => u.Email == name + "@example.invalid");
         var completed = false;
         for (var i = 0; i < 60; i++)
         {
             completed = await db.Database.SqlQueryRaw<BackgroundTaskRow>("""
                 SELECT "Id", "Kind", "TargetId", "CompletedAt" FROM culinary."BackgroundTasks"
-                """).AnyAsync(x => x.Kind == "welcome" && x.TargetId == auth.User.Id && x.CompletedAt != null);
+                """).AnyAsync(x => x.Kind == "welcome" && x.TargetId == user.Id && x.CompletedAt != null);
             if (completed) break;
             await Task.Delay(1000);
         }
@@ -311,9 +312,16 @@ public sealed class JobsObservabilityDatabaseTests
             email = name + "@example.invalid", userName = name, displayName = name, password = "Password123!"
         });
         registered.EnsureSuccessStatusCode();
-        var auth = (await registered.Content.ReadFromJsonAsync<CulinaryBlog.Application.DTOs.Auth.AuthResponse>())!;
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
         await using var db = Database();
+        var user = await db.Users.FirstAsync(u => u.Email == name + "@example.invalid");
+        user.EmailConfirmed = true;
+        await db.SaveChangesAsync();
+        var loginRes = await client.PostAsJsonAsync("/api/v1/auth/login", new {
+            email = name + "@example.invalid", password = "Password123!"
+        });
+        loginRes.EnsureSuccessStatusCode();
+        var auth = (await loginRes.Content.ReadFromJsonAsync<CulinaryBlog.Application.DTOs.Auth.AuthResponse>())!;
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
         var category = await db.Categories.Select(x => x.Id).FirstAsync();
         var created = await client.PostAsJsonAsync("/api/v1/recipes", new {
             title = "Recipe resize integration " + name, description = "Image processing integration fixture.",
@@ -418,6 +426,8 @@ public sealed class JobsObservabilityDatabaseTests
         public int Calls; public bool Fail;
         public Task SendWelcomeEmailAsync(string email, string name, CancellationToken ct = default)
         { Calls++; if (Fail) throw new IOException("SMTP unavailable"); return Task.CompletedTask; }
+        public Task SendEmailConfirmationAsync(string email, string name, string link, CancellationToken ct = default)
+        { Calls++; if (Fail) throw new IOException("SMTP unavailable"); return Task.CompletedTask; }
     }
     private sealed class ImageReader : IOriginalImageReader
     {
@@ -444,6 +454,7 @@ public sealed class JobsObservabilityDatabaseTests
         }
         public Task DeleteAsync(string url, CancellationToken ct) { Files.Remove(url); return Task.CompletedTask; }
         public void Enqueue(string url) => Deletions.Add(url);
+        public bool IsOwnedUrl(string url) => !string.IsNullOrWhiteSpace(url) && url.StartsWith("/uploads/");
     }
     private sealed class TestEnvironment(string directory) : IWebHostEnvironment
     {

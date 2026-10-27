@@ -93,13 +93,13 @@ FR-AUTH (Module Xác thực và Quản lý Người dùng)
 |------------|----------|
 | **Function ID** | FR-AUTH-001 |
 | **Tên chức năng** | Đăng ký Tài khoản Mới |
-| **Mục đích** | Cho phép Guest tạo tài khoản mới, tự động gán role "Author", auto-login sau đăng ký |
+| **Mục đích** | Cho phép Guest tạo tài khoản mới, tự động gán role "Author" và xác nhận email trước khi sử dụng tài khoản |
 | **Actor** | Guest (Anonymous User) |
 | **Mức ưu tiên** | M – Must Have |
 
-**Mô tả:** Hệ thống cho phép người dùng chưa có tài khoản tạo một tài khoản mới bằng cách cung cấp thông tin cơ bản. Sau khi đăng ký thành công, người dùng tự động được gán role "Author" và nhận bộ token để truy cập ngay lập tức (auto-login sau đăng ký). Hệ thống kích hoạt job gửi email chào mừng và email xác nhận bất đồng bộ qua Hangfire.
+**Mô tả:** Hệ thống cho phép người dùng chưa có tài khoản tạo một tài khoản mới bằng cách cung cấp thông tin cơ bản. Sau khi đăng ký thành công, người dùng được gán role "Author" nhưng chưa nhận token; hệ thống kích hoạt job gửi email chào mừng và email xác nhận bất đồng bộ qua Hangfire. Người dùng xác nhận email rồi đăng nhập để truy cập tài khoản.
 
-> **[DECISION 3A]** Auto-login sau đăng ký - trả đầy đủ tokens.
+> **[DECISION 3A — SUPERSEDED by FR-AUTH-008]** Đăng ký không cấp token; yêu cầu xác nhận email trước khi đăng nhập.
 > **[DECISION 5A]** Gửi email xác nhận sau khi đăng ký.
 
 **Preconditions:**
@@ -313,8 +313,9 @@ FR-AUTH (Module Xác thực và Quản lý Người dùng)
 7. Tìm user bằng `UserManager.FindByLoginAsync("Google", providerKey)`
 8. **Nếu chưa có tài khoản:** kiểm tra email → email chưa tồn tại → tạo `ApplicationUser` mới từ Google profile, gán role "Author" → `AddLoginAsync`
 9. **Nếu email đã tồn tại (đăng ký thủ công trước):** liên kết Google login → `AddLoginAsync` với tài khoản hiện có
-10. Tạo access token và refresh token, lưu vào database
-11. Trả về HTTP 200 OK với `AuthResponseDto`
+10. **Nếu provider key đã liên kết:** đồng bộ email Google đã xác minh nếu email mới chưa thuộc tài khoản khác; nếu bị trùng hoặc cập nhật thất bại thì từ chối đăng nhập, không phát session
+11. Tạo access token và refresh token, lưu vào database
+12. Trả về HTTP 200 OK với `AuthResponseDto`
 
 **Alternative Flow:**
 - **A1 – Google token không hợp lệ:** HTTP 401 Unauthorized
@@ -477,25 +478,24 @@ FR-AUTH (Module Xác thực và Quản lý Người dùng)
 
 > **[DECISION 4A]** Mở rộng FR-AUTH-007 để bao gồm `bio` field.
 
-**Mô tả:** Sử dụng PATCH (partial update). Email và UserName KHÔNG thể thay đổi qua endpoint này (đây là quy trình riêng có xác nhận OTP).
+**Mô tả:** Sử dụng PATCH (partial update) cho `displayName` và `bio`. Email, UserName và AvatarUrl KHÔNG thể thay đổi qua endpoint này (Avatar upload/removal sử dụng endpoint chuyên biệt `POST`/`DELETE /api/v1/users/me/avatar`).
 
 **Input:**
 ```json
 {
   "displayName": "string (2–100 ký tự, optional)",
-  "avatarUrl": "string (URL hợp lệ, optional)",
   "bio": "string (max 500 ký tự, optional)"
 }
 ```
 
 > **[DECISION 1A]** Sử dụng `displayName` thay vì `fullName`.
-> **[DECISION 4A]** Thêm `bio` field vào request.
+> **[DECISION 4A]** Thêm `bio` field vào request. Avatar thao tác qua `POST`/`DELETE /api/v1/users/me/avatar`.
 
 **Main Flow:**
 1. Client gửi `PATCH /api/v1/auth/me` với body
 2. `UpdateProfileCommand` dispatch, UserId lấy từ JWT claims
-3. `ValidationBehavior`: displayName 2–100 ký tự, avatarUrl là URL hợp lệ (nếu cung cấp), bio max 500 ký tự (nếu cung cấp) `[DECISION 4A]`
-4. Handler tìm user, cập nhật displayName, avatarUrl, bio `[DECISION 4A]`
+3. `ValidationBehavior`: displayName 2–100 ký tự (nếu cung cấp), bio max 500 ký tự (nếu cung cấp) `[DECISION 4A]`
+4. Handler tìm user, cập nhật displayName, bio `[DECISION 4A]`
 5. `UserManager.UpdateAsync(user)`
 6. Trả về HTTP 200 OK với `UserProfileDto` đã cập nhật
 
@@ -524,58 +524,77 @@ FR-AUTH (Module Xác thực và Quản lý Người dùng)
 
 > **[DECISION 5A]** Bổ sung FR-AUTH-008 để xác nhận email sau đăng ký.
 
-**Mô tả:** Sau khi đăng ký, hệ thống gửi email xác nhận với link. User click link để xác nhận email. Khi email được xác nhận, user có thể sử dụng các tính năng yêu cầu "VerifiedAuthor" policy.
+**Mô tả:** Sau khi đăng ký, hệ thống gửi email xác nhận với link an toàn (dùng URL fragment). User bấm nút xác nhận trên giao diện để hoàn tất xác minh email và tự động đăng nhập. Nếu chưa xác nhận email, tài khoản bị chặn đăng nhập (HTTP 403 `EMAIL_NOT_CONFIRMED`) và không thể truy cập các API yêu cầu xác thực.
 
 **Luồng Email Verification:**
 ```
-1. User đăng ký thành công (FR-AUTH-001)
-2. Backend tạo EmailVerificationToken (GUID, expires 24h)
-3. Backend gửi email với link:
-   https://culinaryblog.com/auth/verify-email?token={token}
-4. User click link
-5. Frontend gửi GET /api/v1/auth/verify-email?token={token}
-6. Backend verify token:
-   - Token tồn tại?
-   - Chưa hết hạn?
-   - Đúng user?
-7. Backend update: EmailConfirmed = true
-8. Trả về success → User có thể dùng VerifiedAuthor features
+1. User đăng ký tài khoản (FR-AUTH-001)
+   → Backend lưu user với EmailConfirmed = false
+   → Trả về HTTP 201 RegistrationPendingResponse (không phát token)
+   → Lưu task EmailConfirmation vào BackgroundTasks (Outbox)
+2. Background task thực thi:
+   → Sinh token Data Protection (24h) qua UserManager.GenerateEmailConfirmationTokenAsync
+   → Gửi email với link chứa fragment:
+     https://culinaryblog.com/verify-email#userId={userId}&token={token}
+3. User click link trong email:
+   → Frontend đọc userId và token từ location.hash
+   → Xóa fragment ngay lập tức qua history.replaceState
+   → Hiển thị nút "Xác nhận email" (bảo vệ chống crawler/prefetch và state mutation qua GET)
+4. User click "Xác nhận email":
+   → Frontend gửi POST /api/v1/auth/email/confirm { userId, token }
+   → Backend xác thực qua UserManager.ConfirmEmailAsync
+   → Đặt EmailConfirmed = true và phát hành cặp JWT/Refresh tokens (auto-login)
+5. Nếu chưa xác nhận:
+   → Đăng nhập trả về HTTP 403 EMAIL_NOT_CONFIRMED
+   → Cho phép gửi lại qua POST /api/v1/auth/email/resend (cooldown 60s Redis, 5 req/phút/IP)
 ```
 
 **Preconditions:**
 1. User đã đăng ký thành công
 2. Email chưa được xác nhận
 
-**Endpoint:**
+**Endpoints:**
 
 | Method | Endpoint | Mô tả |
 |--------|----------|--------|
-| GET | `/api/v1/auth/verify-email?token={token}` | Xác nhận email qua token |
+| POST | `/api/v1/auth/email/confirm` | Xác nhận email qua userId và token (phát hành token đăng nhập) |
+| POST | `/api/v1/auth/email/resend` | Gửi lại email xác nhận (anti-enumeration 202 Accepted, cooldown 60s) |
 
-**Request:**
-- GET `/api/v1/auth/verify-email?token=abc123...`
-
-**Response (200 OK):**
+**Request (Confirm):**
 ```json
 {
-  "message": "Email đã được xác nhận thành công",
-  "emailConfirmed": true
+  "userId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "token": "CfDJ8M..."
 }
 ```
 
-**Error Responses:**
-- HTTP 400: Token không hợp lệ
-- HTTP 400: Token đã hết hạn
-- HTTP 404: Token không tồn tại
+**Response (Confirm - 200 OK):**
+Trả về `AuthResponse` đầy đủ accessToken, refreshToken, expiresAt, user (auto-login sau khi xác nhận).
+
+**Request (Resend):**
+```json
+{
+  "email": "user@example.com"
+}
+```
+
+**Response (Resend - 202 Accepted):**
+```json
+{
+  "message": "Nếu email tồn tại trong hệ thống và chưa được xác nhận, một liên kết xác nhận mới đã được gửi."
+}
+```
 
 **Business Rules:**
-- BR-AUTH-030: Verification token có hiệu lực 24 giờ `[DECISION 5A]`
-- BR-AUTH-031: Token chỉ sử dụng được một lần `[DECISION 5A]`
-- BR-AUTH-032: User có emailConfirmed = true mới được sử dụng VerifiedAuthor policy `[DECISION 5A]`
+- BR-AUTH-030: Verification token có hiệu lực 24 giờ qua Identity Data Protection `[DECISION 5A]`
+- BR-AUTH-031: Token chỉ sử dụng được một lần và không lưu dạng plain/hash ở bảng tùy biến `[DECISION 5A]`
+- BR-AUTH-032: Tài khoản chưa xác nhận email bị chặn đăng nhập cục bộ (HTTP 403 `EMAIL_NOT_CONFIRMED`) và bị reject tại middleware JWT `OnTokenValidated` (HTTP 401)
+- BR-AUTH-033: Gửi lại email xác nhận được rate limit 5 req/min/IP và cooldown 60s theo SHA-256 hash của email trên Redis
 
 **Dependencies:**
-- EmailVerificationToken entity (bảng mới)
-- Hangfire job gửi email xác nhận
+- Outbox `BackgroundTasks` queue (với partial index chống trùng task pending)
+- Email Service (Outbox background worker)
+- Redis Cache (cooldown limiter)
 
 **HTTP Status Codes:** 200 OK | 400 Bad Request | 404 Not Found
 
@@ -668,8 +687,8 @@ flowchart TD
     end
 
     subgraph Data["Data Layer"]
-        H["PostgreSQL 16<br/>AspNetUsers / RefreshTokens<br/>EmailVerificationTokens"]
-        I["Redis 7<br/>Rate Limit Counters"]
+        H["PostgreSQL 16<br/>AspNetUsers / RefreshTokens<br/>BackgroundTasks (Outbox)"]
+        I["Redis 7<br/>Rate Limit Counters & Cooldowns"]
     end
 
     A -->|"HTTPS/JSON"| B
@@ -777,11 +796,11 @@ Client → POST /api/v1/auth/refresh → RefreshTokenCommandHandler
 
 | Aspect | Chi tiết |
 |--------|----------|
-| Trigger | Sau khi đăng ký thành công (FR-AUTH-001) |
-| Token | GUID, expires 24 giờ, single-use |
-| Endpoint | GET `/api/v1/auth/verify-email?token={token}` |
-| Effect | EmailConfirmed = true |
-| Benefit | Unlock VerifiedAuthor policy |
+| Trigger | Sau khi đăng ký thành công (FR-AUTH-001) hoặc yêu cầu gửi lại |
+| Token | Identity Data Protection token, expires 24 giờ, URL fragment |
+| Endpoint | POST `/api/v1/auth/email/confirm` & POST `/api/v1/auth/email/resend` |
+| Effect | EmailConfirmed = true, auto-login sau khi confirm thành công |
+| Benefit | Mở khóa đăng nhập cục bộ và quyền truy cập API |
 
 ---
 
@@ -829,18 +848,14 @@ Kế thừa từ ASP.NET Core Identity `IdentityUser<string>`.
 | CreatedAt | timestamptz | NOT NULL, DEFAULT NOW() | NOT NULL | — | Thời điểm tạo |
 | CreatedByIp | varchar(45) | — | NULL | — | IP address (audit) |
 
-### 8.3. Entity: EmailVerificationToken (Table: EmailVerificationTokens) `[DECISION 5A]` ⭐ NEW
+### 8.3. Identity Token Provider & Outbox Queue (Table: BackgroundTasks) `[DECISION 5A]` ⭐
 
-| Column | Type | Constraint | Nullable | Index | Mô tả |
-|--------|------|-----------|----------|-------|--------|
-| Id | uuid | PK | NOT NULL | PK | UUID khóa chính |
-| UserId | varchar(450) | FK → AspNetUsers.Id, ON DELETE CASCADE | NOT NULL | FK Index | Chủ sở hữu token |
-| Token | varchar(64) | NOT NULL, UNIQUE | NOT NULL | IDX_EVT_Token (UNIQUE) | SHA-256 hash của token |
-| ExpiresAt | timestamptz | NOT NULL | NOT NULL | — | Hết hạn sau 24 giờ |
-| UsedAt | timestamptz | — | NULL | — | Thời điểm sử dụng, NULL = chưa dùng |
-| CreatedAt | timestamptz | NOT NULL, DEFAULT NOW() | NOT NULL | — | Thời điểm tạo |
+Thay vì tạo bảng tùy biến `EmailVerificationTokens`, hệ thống sử dụng ASP.NET Core Identity Data Protection Token Provider chuẩn (thời hạn 24 giờ). Việc lưu trữ và gửi email xác nhận được quản lý qua bảng Outbox `BackgroundTasks`:
 
-> **[DECISION 5A]** Bảng mới cho Email Verification tokens.
+- **Outbox Task:** `BackgroundTasks` lưu job gửi email với `Type = 'EmailConfirmation'`.
+- **Chống trùng lặp (Partial Index):** Migration `20261020000000_EmailVerificationTaskPartialIndex` thêm chỉ mục:
+  `CREATE UNIQUE INDEX "IX_BackgroundTasks_Type_Status_EmailPayload" ON "BackgroundTasks" ("Type", "Status", ("Payload"->>'Email')) WHERE "Type" = 'EmailConfirmation' AND "Status" = 'Pending';`
+- Token chỉ được sinh tại thời điểm job thực thi bằng `UserManager.GenerateEmailConfirmationTokenAsync(user)`, tránh tình trạng token hết hạn khi job bị trễ trong hàng đợi.
 
 ---
 
@@ -873,21 +888,12 @@ Kế thừa từ ASP.NET Core Identity `IdentityUser<string>`.
 **Response (201 Created):**
 ```json
 {
-  "accessToken": "string (JWT)",
-  "refreshToken": "string",
-  "expiresAt": "ISO 8601 datetime",
-  "user": {
-    "id": "guid",
-    "displayName": "string",
-    "email": "string",
-    "userName": "string",
-    "avatarUrl": null,
-    "roles": ["Author"]
-  }
+  "email": "user@example.com",
+  "emailConfirmationRequired": true
 }
 ```
 
-> **[DECISION 3A]** Response có đầy đủ tokens.
+> **[DECISION 3B]** Registration không tự động phát hành tokens; trả về `RegistrationPendingResponse` và yêu cầu xác nhận email trước khi đăng nhập.
 
 ---
 
@@ -1010,42 +1016,83 @@ Kế thừa từ ASP.NET Core Identity `IdentityUser<string>`.
 |------------|----------|
 | **HTTP Method** | PATCH |
 | **Endpoint** | `/api/v1/auth/me` |
-| **Purpose** | Cập nhật profile (displayName, avatarUrl, bio) |
+| **Purpose** | Cập nhật profile (displayName, bio). Avatar upload/removal sử dụng POST/DELETE /api/v1/users/me/avatar |
 | **Auth Required** | Bearer JWT |
 
 **Request:**
 ```json
 {
   "displayName": "string (optional, 2-100 chars)",
-  "avatarUrl": "string (optional, valid URL)",
   "bio": "string (optional, max 500 chars)"
 }
 ```
 
-> **[DECISION 4A]** Thêm `bio` field.
+> **[DECISION 4A]** Thêm `bio` field. Avatar upload/removal sử dụng POST/DELETE /api/v1/users/me/avatar.
 
 **Response (200 OK):** Updated `UserProfileDto`
 
 ---
 
-#### API-8: Verify Email `[DECISION 5A]` ⭐ NEW
+#### API-8: Confirm Email `[DECISION 5A]` ⭐ NEW
 
 | Thuộc tính | Chi tiết |
 |------------|----------|
-| **HTTP Method** | GET |
-| **Endpoint** | `/api/v1/auth/verify-email?token={token}` |
-| **Purpose** | Xác nhận email qua token |
+| **HTTP Method** | POST |
+| **Endpoint** | `/api/v1/auth/email/confirm` |
+| **Purpose** | Xác nhận email qua userId và token |
 | **Auth Required** | Không |
+| **Rate Limit** | 5 req/min/IP |
 
-**Response (200 OK):**
+**Request:**
 ```json
 {
-  "message": "Email đã được xác nhận thành công",
-  "emailConfirmed": true
+  "userId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "token": "CfDJ8M..."
 }
 ```
 
-> **[DECISION 5A]** Endpoint mới cho Email Verification.
+**Response (200 OK):**
+Trả về `AuthResponse` đầy đủ (tự động đăng nhập sau khi xác nhận thành công):
+```json
+{
+  "accessToken": "eyJhbGciOi...",
+  "refreshToken": "guid",
+  "expiresAt": "2026-10-21T08:00:00Z",
+  "user": {
+    "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "displayName": "User",
+    "email": "user@example.com",
+    "userName": "user",
+    "roles": ["Author"]
+  }
+}
+```
+
+---
+
+#### API-9: Resend Email Confirmation `[DECISION 5A]` ⭐ NEW
+
+| Thuộc tính | Chi tiết |
+|------------|----------|
+| **HTTP Method** | POST |
+| **Endpoint** | `/api/v1/auth/email/resend` |
+| **Purpose** | Gửi lại liên kết xác nhận email |
+| **Auth Required** | Không |
+| **Rate Limit** | 5 req/min/IP, 60s per-email cooldown (Redis) |
+
+**Request:**
+```json
+{
+  "email": "user@example.com"
+}
+```
+
+**Response (202 Accepted):**
+```json
+{
+  "message": "Nếu email tồn tại trong hệ thống và chưa được xác nhận, một liên kết xác nhận mới đã được gửi."
+}
+```
 
 ---
 
@@ -1057,7 +1104,7 @@ Kế thừa từ ASP.NET Core Identity `IdentityUser<string>`.
 |---|---------|---------|----------|----------|
 | 1 | fullName vs displayName | 🔴 Cao | **1A** | Thống nhất dùng `displayName` |
 | 2 | Google OAuth Format | 🔴 Cao | **2B** | Client-side Auth.js + idToken |
-| 3 | Register Response | 🔴 Cao | **3A** | Auto-login, trả đầy đủ tokens |
+| 3 | Register Response | 🔴 Cao | **3B** | Pending confirmation, không phát token khi đăng ký |
 | 4 | Thiếu Bio | 🟡 Trung | **4A** | Mở rộng FR-AUTH-007 với bio |
 | 5 | Email Verification | 🟡 Trung | **5A** | Bổ sung FR-AUTH-008 |
 | 6 | Password Features | 🟡 Trung | **6C** | Out-of-Scope v1.0 |
@@ -1075,7 +1122,7 @@ CulinaryBlog.Domain/
 ├── Entities/
 │   └── ApplicationUser.cs        # extends IdentityUser
 │   └── RefreshToken.cs
-│   └── EmailVerificationToken.cs  # [DECISION 5A] NEW
+│   └── BackgroundTask.cs         # Outbox queue
 ├── ValueObjects/
 │   └── EmailAddress.cs
 ├── Enums/
@@ -1096,15 +1143,21 @@ CulinaryBlog.Application/
 │   │   │   ├── GoogleLoginCommand.cs
 │   │   │   ├── GoogleLoginCommandHandler.cs
 │   │   │   └── GoogleLoginCommandValidator.cs  # [DECISION 2B] NEW
+│   │   ├── ConfirmEmail/
+│   │   │   ├── ConfirmEmailCommand.cs
+│   │   │   ├── ConfirmEmailCommandHandler.cs
+│   │   │   └── ConfirmEmailCommandValidator.cs
+│   │   ├── ResendEmailConfirmation/
+│   │   │   ├── ResendEmailConfirmationCommand.cs
+│   │   │   ├── ResendEmailConfirmationCommandHandler.cs
+│   │   │   └── ResendEmailConfirmationCommandValidator.cs
 │   │   ├── RefreshToken/
-│   │   ├── Logout/
-│   │   └── VerifyEmail/
-│   │       ├── VerifyEmailQuery.cs
-│   │       └── VerifyEmailQueryHandler.cs
+│   │   └── Logout/
 │   ├── Queries/
 │   │   └── GetCurrentUser/
 │   ├── DTOs/
 │   │   ├── AuthResponseDto.cs
+│   │   ├── RegistrationPendingResponse.cs
 │   │   └── UserProfileDto.cs  # [DECISION 1A, 4A] Updated
 │   └── Interfaces/
 │       ├── IJwtService.cs
@@ -1117,7 +1170,7 @@ CulinaryBlog.Infrastructure/
 │   ├── Configurations/
 │   │   ├── ApplicationUserConfiguration.cs
 │   │   ├── RefreshTokenConfiguration.cs
-│   │   └── EmailVerificationTokenConfiguration.cs  # [DECISION 5A] NEW
+│   │   └── BackgroundTaskConfiguration.cs
 │   └── Repositories/
 
 CulinaryBlog.API/
@@ -1132,11 +1185,11 @@ CulinaryBlog.API/
 
 | Giai đoạn | Tasks | Dependencies |
 |-----------|-------|--------------|
-| **Phase 1** | Database setup: EF Core migrations cho Identity + RefreshToken + EmailVerificationToken | PostgreSQL running |
-| **Phase 2** | FR-AUTH-001 (Register) + FR-AUTH-002 (Login) | Phase 1 |
+| **Phase 1** | Database setup: EF Core migrations cho Identity + RefreshToken + Outbox BackgroundTasks partial index | PostgreSQL running |
+| **Phase 2** | FR-AUTH-001 (Register pending confirmation) + FR-AUTH-002 (Login with confirmed-email gate) | Phase 1 |
 | **Phase 3** | FR-AUTH-004 (Token Refresh) + FR-AUTH-005 (Logout) | Phase 2 |
 | **Phase 4** | FR-AUTH-006 (View Profile) + FR-AUTH-007 (Update Profile with bio) | Phase 2 |
-| **Phase 5** | FR-AUTH-008 (Email Verification) | Phase 2 + Email Service |
+| **Phase 5** | FR-AUTH-008 (Email Verification: Outbox background task, Confirm & Resend endpoints, central JWT OnTokenValidated gate) | Phase 2 + Email Service |
 | **Phase 6** | FR-AUTH-003 (Google OAuth with idToken) | Phase 2 + Google Cloud setup |
 | **Phase 7** | Rate Limiting + Security hardening | Phase 3 |
 | **Phase 8** | Frontend: Login/Register/Profile pages | Phase 4 + 5 + 6 |

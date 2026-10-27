@@ -1,5 +1,8 @@
 # FR-AUTH-002 Frontend Integration — Implementation Plan
 
+> ⚠️ **UPDATED BY FR-AUTH-008 (EMAIL VERIFICATION):**
+> Frontend handles HTTP 403 `EMAIL_NOT_CONFIRMED` on login by displaying an amber alert banner and providing a resend email confirmation action with cooldown.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Connect the backend login endpoint (FR-AUTH-002) to the frontend login page, replacing mock authentication.

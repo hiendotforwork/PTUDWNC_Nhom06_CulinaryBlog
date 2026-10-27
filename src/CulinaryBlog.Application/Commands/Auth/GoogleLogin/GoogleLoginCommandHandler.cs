@@ -28,24 +28,59 @@ public class GoogleLoginCommandHandler : IRequestHandler<GoogleLoginCommand, Aut
 
     public async Task<AuthResponse> Handle(GoogleLoginCommand request, CancellationToken cancellationToken)
     {
+        // 0. Fail closed if provider email is not verified
+        if (!request.EmailVerified)
+        {
+            throw AuthException.InvalidCredentials();
+        }
+
         // 1. Check if user exists with this external login
         var existingUser = await _userRepository.FindByLoginAsync(request.Provider, request.ProviderKey, cancellationToken);
 
-        // 2. If not found by login, check by email
-        if (existingUser == null)
+        if (existingUser != null)
         {
+            var providerEmail = request.Email.Trim();
+            if (!string.Equals(existingUser.Email, providerEmail, StringComparison.OrdinalIgnoreCase))
+            {
+                var emailOwner = await _userRepository.FindByEmailAsync(providerEmail, cancellationToken);
+                if (emailOwner != null && emailOwner.Id != existingUser.Id)
+                {
+                    throw AuthException.InvalidCredentials();
+                }
+
+                existingUser.Email = providerEmail;
+            }
+
+            if (!existingUser.EmailConfirmed || !string.Equals(existingUser.Email, request.Email, StringComparison.Ordinal))
+            {
+                existingUser.EmailConfirmed = true;
+                var updateResult = await _userRepository.UpdateAsync(existingUser, cancellationToken);
+                if (!updateResult.Succeeded) throw AuthException.InvalidCredentials();
+            }
+        }
+        else
+        {
+            // 2. If not found by login, check by email
             existingUser = await _userRepository.FindByEmailAsync(request.Email, cancellationToken);
 
             if (existingUser != null)
             {
+                if (!existingUser.EmailConfirmed)
+                {
+                    existingUser.EmailConfirmed = true;
+                    var updateResult = await _userRepository.UpdateAsync(existingUser, cancellationToken);
+                    if (!updateResult.Succeeded) throw AuthException.InvalidCredentials();
+                }
+
                 // Link Google login to existing account
-                await _userRepository.AddLoginAsync(
+                var linkResult = await _userRepository.AddLoginAsync(
                     existingUser,
                     request.Provider,
                     request.ProviderKey,
                     request.DisplayName,
                     request.AvatarUrl
                 );
+                if (!linkResult.Succeeded) throw AuthException.InvalidCredentials();
             }
         }
 
@@ -62,6 +97,7 @@ public class GoogleLoginCommandHandler : IRequestHandler<GoogleLoginCommand, Aut
             }
 
             existingUser = ApplicationUser.Create(request.DisplayName, request.Email, userName);
+            existingUser.EmailConfirmed = true;
 
             if (!string.IsNullOrEmpty(request.AvatarUrl))
             {

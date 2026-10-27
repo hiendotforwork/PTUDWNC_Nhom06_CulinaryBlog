@@ -4,8 +4,13 @@ using CulinaryBlog.Application.Commands.Auth.Login;
 using CulinaryBlog.Application.Commands.Auth.Register;
 using CulinaryBlog.Application.Commands.Auth.Logout;
 using CulinaryBlog.Application.Commands.Auth.RefreshToken;
+using CulinaryBlog.Application.Commands.Auth.ConfirmEmail;
+using CulinaryBlog.Application.Commands.Auth.ResendEmailConfirmation;
 using CulinaryBlog.Application.DTOs.Auth;
 using CulinaryBlog.Application.Commands.Auth.GoogleLogin;
+using CulinaryBlog.Application.Commands.Auth.UpdateProfile;
+using CulinaryBlog.Application.Queries.Auth;
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
@@ -23,6 +28,9 @@ public class AuthController : ControllerBase
     private readonly IValidator<RegisterCommand> _registerValidator;
     private readonly IValidator<LoginCommand> _loginValidator;
     private readonly IValidator<RefreshTokenCommand>? _refreshValidator;
+    private readonly IValidator<UpdateProfileCommand>? _updateProfileValidator;
+    private readonly IValidator<ConfirmEmailCommand>? _confirmEmailValidator;
+    private readonly IValidator<ResendEmailConfirmationCommand>? _resendEmailValidator;
     private readonly IConfiguration _configuration;
 
     public AuthController(
@@ -30,18 +38,24 @@ public class AuthController : ControllerBase
         IValidator<RegisterCommand> registerValidator,
         IValidator<LoginCommand> loginValidator,
         IConfiguration configuration,
-        IValidator<RefreshTokenCommand>? refreshValidator = null)
+        IValidator<RefreshTokenCommand>? refreshValidator = null,
+        IValidator<UpdateProfileCommand>? updateProfileValidator = null,
+        IValidator<ConfirmEmailCommand>? confirmEmailValidator = null,
+        IValidator<ResendEmailConfirmationCommand>? resendEmailValidator = null)
     {
         _mediator = mediator;
         _registerValidator = registerValidator;
         _loginValidator = loginValidator;
         _configuration = configuration;
         _refreshValidator = refreshValidator;
+        _updateProfileValidator = updateProfileValidator;
+        _confirmEmailValidator = confirmEmailValidator;
+        _resendEmailValidator = resendEmailValidator;
     }
 
     [HttpPost("register")]
     [EnableRateLimiting("RegisterRateLimit")]
-    [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(RegistrationPendingResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
@@ -110,6 +124,71 @@ public class AuthController : ControllerBase
         return Ok(result);
     }
 
+    [HttpPost("email/confirm")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<IActionResult> ConfirmEmail([FromBody] ConfirmEmailRequest request, CancellationToken cancellationToken)
+    {
+        var command = new ConfirmEmailCommand(request.UserId, request.Token);
+        if (_confirmEmailValidator is not null)
+        {
+            var validationResult = await _confirmEmailValidator.ValidateAsync(command, cancellationToken);
+            if (!validationResult.IsValid)
+            {
+                throw new ValidationException(validationResult.Errors);
+            }
+        }
+
+        var result = await _mediator.Send(command, cancellationToken);
+        return Ok(result);
+    }
+
+    [HttpPost("email/status")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<IActionResult> GetEmailConfirmationStatus([FromBody] ConfirmEmailRequest request, CancellationToken cancellationToken)
+    {
+        var command = new ConfirmEmailCommand(request.UserId, request.Token);
+        if (_confirmEmailValidator is not null)
+        {
+            var validationResult = await _confirmEmailValidator.ValidateAsync(command, cancellationToken);
+            if (!validationResult.IsValid)
+            {
+                throw new ValidationException(validationResult.Errors);
+            }
+        }
+
+        var confirmed = await _mediator.Send(new GetEmailConfirmationStatusQuery(request.UserId, request.Token), cancellationToken);
+        return Ok(new { confirmed });
+    }
+
+    [HttpPost("email/resend")]
+    [EnableRateLimiting("ResendEmailRateLimit")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+    public async Task<IActionResult> ResendEmailConfirmation([FromBody] ResendEmailConfirmationRequest request, CancellationToken cancellationToken)
+    {
+        var command = new ResendEmailConfirmationCommand(request.Email);
+        if (_resendEmailValidator is not null)
+        {
+            var validationResult = await _resendEmailValidator.ValidateAsync(command, cancellationToken);
+            if (!validationResult.IsValid)
+            {
+                throw new ValidationException(validationResult.Errors);
+            }
+        }
+
+        await _mediator.Send(command, cancellationToken);
+        return Accepted();
+    }
+
     [HttpGet("google-signin")]
     public IActionResult GoogleSignIn([FromQuery] string? returnUrl = null)
     {
@@ -145,9 +224,12 @@ public class AuthController : ControllerBase
             var avatarUrl = claims?.FirstOrDefault(c => c.Type == "picture")?.Value;
             var providerKey = claims?.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
 
-            if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(providerKey))
+            var emailVerifiedClaim = claims?.FirstOrDefault(c => c.Type == "email_verified")?.Value;
+            var emailVerified = string.Equals(emailVerifiedClaim, "true", StringComparison.OrdinalIgnoreCase);
+
+            if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(providerKey) || !emailVerified)
             {
-                return Redirect($"{frontendBase}/login?error={Uri.EscapeDataString("Không thể lấy thông tin từ Google.")}");
+                return Redirect($"{frontendBase}/login?error={Uri.EscapeDataString("Không thể lấy thông tin xác thực từ Google hoặc email chưa được xác thực.")}");
             }
 
             var command = new GoogleLoginCommand(
@@ -155,7 +237,8 @@ public class AuthController : ControllerBase
                 ProviderKey: providerKey,
                 Email: email,
                 DisplayName: displayName,
-                AvatarUrl: avatarUrl
+                AvatarUrl: avatarUrl,
+                EmailVerified: emailVerified
             );
 
             var authResponse = await _mediator.Send(command, cancellationToken);
@@ -193,5 +276,72 @@ public class AuthController : ControllerBase
     {
         await _mediator.Send(new LogoutCommand(request?.RefreshToken), cancellationToken);
         return NoContent();
+    }
+
+    [HttpGet("me")]
+    [Authorize]
+    [ProducesResponseType(typeof(UserProfileDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<UserProfileDto>> GetCurrentUser(CancellationToken cancellationToken)
+    {
+        var nameIdentifier = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var sub = User.FindFirstValue(JwtRegisteredClaimNames.Sub) ?? User.FindFirst("sub")?.Value;
+
+        var userId = !string.IsNullOrWhiteSpace(nameIdentifier) ? nameIdentifier.Trim()
+            : !string.IsNullOrWhiteSpace(sub) ? sub.Trim()
+            : null;
+
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return Unauthorized();
+        }
+
+        var profile = await _mediator.Send(new GetCurrentUserQuery(userId), cancellationToken);
+        if (profile is null)
+        {
+            return NotFound();
+        }
+
+        return Ok(profile);
+    }
+
+    [HttpPatch("me")]
+    [Authorize]
+    [ProducesResponseType(typeof(UserProfileDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<UserProfileDto>> UpdateProfile([FromBody] UpdateProfileRequest request, CancellationToken cancellationToken)
+    {
+        var nameIdentifier = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var sub = User.FindFirstValue(JwtRegisteredClaimNames.Sub) ?? User.FindFirst("sub")?.Value;
+
+        var userId = !string.IsNullOrWhiteSpace(nameIdentifier) ? nameIdentifier.Trim()
+            : !string.IsNullOrWhiteSpace(sub) ? sub.Trim()
+            : null;
+
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return Unauthorized();
+        }
+
+        var command = new UpdateProfileCommand(
+            userId,
+            request.DisplayName,
+            request.Bio
+        );
+
+        if (_updateProfileValidator != null)
+        {
+            var validationResult = await _updateProfileValidator.ValidateAsync(command, cancellationToken);
+            if (!validationResult.IsValid)
+            {
+                throw new ValidationException(validationResult.Errors);
+            }
+        }
+
+        var profile = await _mediator.Send(command, cancellationToken);
+        return Ok(profile);
     }
 }

@@ -17,4 +17,5 @@ public sealed class TestFileStorage : IFileStorageService, IFileDeletionQueue
     }
     public Task DeleteAsync(string url, CancellationToken ct) { Files.TryRemove(url, out _); return Task.CompletedTask; }
     public void Enqueue(string url) => Deletions.Enqueue(url);
+    public bool IsOwnedUrl(string url) => !string.IsNullOrWhiteSpace(url) && url.StartsWith("http://storage.test/culinary-blog/");
 }

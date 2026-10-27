@@ -61,4 +61,18 @@ public sealed class MinioFileStorageService(IMinioClient client, IOptions<MinioS
 
     private static bool SafeSegment(string value) => value.Length > 0 &&
         value.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_');
+
+    public bool IsOwnedUrl(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return false;
+        try
+        {
+            GetObjectName(url);
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+    }
 }

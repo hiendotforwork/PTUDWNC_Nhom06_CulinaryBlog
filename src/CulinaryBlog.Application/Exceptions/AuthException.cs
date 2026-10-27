@@ -39,4 +39,13 @@ public class AuthException : Exception
 
     public static AuthException TokenReuseDetected() =>
         new("AUTH_TOKEN_REUSE", "Refresh token reuse detected. Possible security threat.", 401);
+
+    public static AuthException InvalidConfirmationToken() =>
+        new("EMAIL_CONFIRMATION_FAILED", "Mã xác nhận không hợp lệ hoặc đã hết hạn.", 400);
+
+    public static AuthException EmailAlreadyConfirmed() =>
+        new("EMAIL_ALREADY_CONFIRMED", "Địa chỉ email đã được xác nhận trước đó.", 409);
+
+    public static AuthException EmailNotConfirmed() =>
+        new("EMAIL_NOT_CONFIRMED", "Vui lòng xác nhận địa chỉ email trước khi đăng nhập.", 403);
 }

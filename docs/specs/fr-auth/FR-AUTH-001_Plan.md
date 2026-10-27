@@ -9,7 +9,10 @@
 
 ## 1. Problem Statement
 
-Triển khai chức năng đăng ký tài khoản (FR-AUTH-001) cho Culinary Blog. User đăng ký với email, username, display name, và password. Sau khi đăng ký thành công, user nhận được JWT tokens và tự động đăng nhập.
+Triển khai chức năng đăng ký tài khoản (FR-AUTH-001) cho Culinary Blog. User đăng ký với email, username, display name, và password.
+
+> **Cập nhật theo FR-AUTH-008 (Email Verification):**
+> Đăng ký tài khoản không tự động phát hành token hay auto-login. Endpoint trả về `RegistrationPendingResponse` (HTTP 201 Created) gồm `email` và `emailConfirmationRequired = true`. Hệ thống xếp hàng gửi email xác nhận và welcome qua Outbox `BackgroundTasks`. Người dùng phải xác nhận email trước khi đăng nhập.
 
 ---
 
@@ -179,10 +182,9 @@ Triển khai chức năng đăng ký tài khoản (FR-AUTH-001) cho Culinary Blo
    b. Check username uniqueness via IUserRepository → 409 if exists
    c. Create ApplicationUser with hashed password (via UserManager)
    d. Assign "Author" role (via RoleManager)
-   e. Generate JWT access token (15 min) via TokenService
-   f. Generate refresh token (7 days), store hash via RefreshTokenRepository
-   g. Return AuthResponse
-6. Controller returns 201 Created with AuthResponse
+   e. Queue EmailConfirmation and Welcome tasks in BackgroundTasks (Outbox)
+   f. Return RegistrationPendingResponse (Email, EmailConfirmationRequired = true)
+6. Controller returns 201 Created with RegistrationPendingResponse (không phát hành token)
 7. Rate limiting applied (10 req/min/IP)
 ```
 
@@ -283,7 +285,7 @@ dotnet ef database update --project src/CulinaryBlog.Infrastructure --startup-pr
 - Password missing special char fails
 
 **RegisterCommandHandlerTests (4 cases):**
-- Success: returns AuthResponse with tokens
+- Success: returns RegistrationPendingResponse (no tokens), queues Outbox tasks
 - Duplicate email: returns ConflictResult
 - Duplicate username: returns ConflictResult
 - User creation failure: returns ErrorResult

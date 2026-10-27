@@ -16,6 +16,14 @@ public class UserRepository : IUserRepository
         _roleManager = roleManager;
     }
 
+    public async Task<ApplicationUser?> FindByIdAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+            return null;
+
+        return await _userManager.FindByIdAsync(userId);
+    }
+
     public async Task<ApplicationUser?> FindByEmailAsync(string email, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(email))
@@ -122,5 +130,31 @@ public class UserRepository : IUserRepository
 
         await _userManager.ResetAccessFailedCountAsync(user);
         return new SignInResult(Succeeded: true);
+    }
+
+    public async Task<(bool Succeeded, IEnumerable<string> Errors)> UpdateAsync(ApplicationUser user, CancellationToken cancellationToken = default)
+    {
+        var result = await _userManager.UpdateAsync(user);
+        return (result.Succeeded, result.Errors.Select(e => e.Description));
+    }
+
+    public Task<string> GenerateEmailConfirmationTokenAsync(ApplicationUser user, CancellationToken cancellationToken = default)
+    {
+        return _userManager.GenerateEmailConfirmationTokenAsync(user);
+    }
+
+    public Task<bool> VerifyEmailConfirmationTokenAsync(ApplicationUser user, string token, CancellationToken cancellationToken = default)
+    {
+        return _userManager.VerifyUserTokenAsync(
+            user,
+            _userManager.Options.Tokens.EmailConfirmationTokenProvider,
+            UserManager<ApplicationUser>.ConfirmEmailTokenPurpose,
+            token);
+    }
+
+    public async Task<(bool Succeeded, IEnumerable<string> Errors)> ConfirmEmailAsync(ApplicationUser user, string token, CancellationToken cancellationToken = default)
+    {
+        var result = await _userManager.ConfirmEmailAsync(user, token);
+        return (result.Succeeded, result.Errors.Select(e => e.Description));
     }
 }

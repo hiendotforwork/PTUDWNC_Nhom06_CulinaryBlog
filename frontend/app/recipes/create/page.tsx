@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { RecipeForm } from "../../components/recipe/RecipeForm";
+import { AuthorGate } from "../../components/auth/AuthorGate";
 
 export default function CreateRecipePage() {
   return (
@@ -17,7 +18,7 @@ export default function CreateRecipePage() {
         <span className="text-[#463F3A] dark:text-[#F5F3EF] font-medium">Tạo công thức mới</span>
       </nav>
 
-      <RecipeForm />
+      <AuthorGate><RecipeForm /></AuthorGate>
     </div>
   );
 }

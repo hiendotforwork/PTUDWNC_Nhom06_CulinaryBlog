@@ -2,14 +2,13 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { ChefHat, User, Mail, AtSign, Lock, ArrowRight } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { Input } from "../components/ui/Input";
 import { Button } from "../components/ui/Button";
+import { resendEmailConfirmation } from "../lib/api";
 
 export default function RegisterPage() {
-  const router = useRouter();
   const { register, showToast } = useApp();
 
   const [displayName, setDisplayName] = useState("");
@@ -19,6 +18,9 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
+  const [isResending, setIsResending] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,7 +72,7 @@ export default function RegisterPage() {
 
     try {
       await register({ displayName, email, userName, password });
-      router.push("/");
+      setRegisteredEmail(email);
     } catch (err: unknown) {
       const error = err as { fieldErrors?: Record<string, string>; field?: string; message?: string };
       if (error.fieldErrors && Object.keys(error.fieldErrors).length > 0) {
@@ -83,11 +85,85 @@ export default function RegisterPage() {
     }
   };
 
+  const handleResend = async () => {
+    if (!registeredEmail || resendCooldown > 0) return;
+    setIsResending(true);
+    try {
+      await resendEmailConfirmation(registeredEmail);
+      showToast("success", "Email xác nhận mới đã được gửi!");
+      setResendCooldown(60);
+      const timer = setInterval(() => {
+        setResendCooldown((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } catch {
+      showToast("error", "Không thể gửi lại email xác nhận. Vui lòng thử lại sau.");
+    } finally {
+      setIsResending(false);
+    }
+  };
+
   const handleGoogleSignup = () => {
     const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5058";
     const returnUrl = encodeURIComponent("/");
     window.location.href = `${apiBase}/api/v1/auth/google-signin?returnUrl=${returnUrl}`;
   };
+
+  if (registeredEmail) {
+    return (
+      <div className="min-h-[85dvh] flex items-center justify-center px-4 py-12 sm:px-6">
+        <div className="w-full max-w-md double-bezel">
+          <div className="double-bezel-inner p-8 sm:p-10 flex flex-col gap-6 text-center items-center">
+            <div className="w-14 h-14 rounded-2xl bg-[#E0AFA0] text-[#60413A] flex items-center justify-center shadow-inner">
+              <Mail className="w-7 h-7" />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <h1 className="font-serif text-2xl sm:text-3xl font-bold text-[#463F3A] dark:text-[#F5F3EF]">
+                Kiểm tra email của bạn
+              </h1>
+              <p className="text-xs sm:text-sm text-[#8A817C] dark:text-[#A8A29E] leading-relaxed">
+                Chúng tôi đã gửi liên kết kích hoạt tài khoản đến địa chỉ:
+              </p>
+              <p className="font-semibold text-sm sm:text-base text-[#463F3A] dark:text-[#F5F3EF] bg-[#F5F3EF] dark:bg-[#2A2624] py-2 px-3 rounded-xl border border-[#DCD8D2] dark:border-[#3D3934]">
+                {registeredEmail}
+              </p>
+              <p className="text-xs text-[#8A817C] dark:text-[#A8A29E] mt-1">
+                Vui lòng mở email và nhấn vào liên kết xác nhận để kích hoạt tài khoản. Liên kết có hiệu lực trong 24 giờ.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3 w-full">
+              <Button
+                type="button"
+                variant="secondary"
+                size="md"
+                isLoading={isResending}
+                disabled={isResending || resendCooldown > 0}
+                onClick={handleResend}
+                className="w-full"
+              >
+                {resendCooldown > 0
+                  ? `Gửi lại sau ${resendCooldown}s`
+                  : "Gửi lại email xác nhận"}
+              </Button>
+
+              <Link href="/login" className="w-full">
+                <Button variant="primary" size="md" className="w-full">
+                  Quay lại đăng nhập
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[85dvh] flex items-center justify-center px-4 py-12 sm:px-6">
@@ -189,24 +265,6 @@ export default function RegisterPage() {
             onClick={handleGoogleSignup}
             className="w-full flex items-center justify-center gap-3"
           >
-            <svg className="w-4 h-4" viewBox="0 0 24 24">
-              <path
-                fill="#4285F4"
-                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-              />
-              <path
-                fill="#34A853"
-                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-              />
-              <path
-                fill="#EA4335"
-                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-              />
-            </svg>
             <span>Đăng ký bằng Google</span>
           </Button>
 

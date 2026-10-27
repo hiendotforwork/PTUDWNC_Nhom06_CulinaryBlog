@@ -8,6 +8,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import { RecipeForm } from "../../../components/recipe/RecipeForm";
+import { AuthorGate } from "../../../components/auth/AuthorGate";
 import { getRecipe } from "../../../lib/api";
 import { Recipe } from "../../../lib/types";
 
@@ -18,6 +19,10 @@ interface PageProps {
 // Chức năng: tải công thức theo slug và truyền dữ liệu vào RecipeForm.
 // Input: params chứa slug. Output: React component trang chỉnh sửa hoặc trang 404.
 export default function EditRecipePage({ params }: PageProps) {
+  return <AuthorGate><EditRecipeContent params={params} /></AuthorGate>;
+}
+
+function EditRecipeContent({ params }: PageProps) {
   const { slug } = use(params);
   const [recipe, setRecipe] = useState<Recipe | null>();
 

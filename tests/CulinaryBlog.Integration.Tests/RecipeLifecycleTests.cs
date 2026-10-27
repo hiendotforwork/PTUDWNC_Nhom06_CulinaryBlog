@@ -9,10 +9,13 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using CulinaryBlog.API.Controllers;
 using CulinaryBlog.Application.DTOs.Auth;
+using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Domain.Enums;
 using CulinaryBlog.Infrastructure.Data;
+using CulinaryBlog.Integration.Tests.Helpers;
 using FluentAssertions;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -109,16 +112,15 @@ public sealed class RecipeLifecycleTests : IClassFixture<CustomWebApplicationFac
     {
         var suffix = Guid.NewGuid().ToString("N")[..8];
         var client = _factory.CreateClient();
-        var response = await client.PostAsJsonAsync("/api/v1/auth/register", new
-        {
-            email = $"{prefix}_{suffix}@culinaryblog.vn",
-            userName = $"{prefix}_{suffix}",
-            displayName = $"Chef {prefix}",
-            password = "Password123!"
-        });
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
-        var auth = await response.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions);
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth!.AccessToken);
+        var auth = await AuthTestHelpers.RegisterConfirmedUserAsync(
+            client,
+            _factory.Services,
+            new RegisterRequest(
+                Email: $"{prefix}_{suffix}@culinaryblog.vn",
+                UserName: $"{prefix}_{suffix}",
+                DisplayName: $"Chef {prefix}",
+                Password: "Password123!"));
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
         return client;
     }
 
@@ -129,5 +131,37 @@ public sealed class RecipeLifecycleTests : IClassFixture<CustomWebApplicationFac
             15, 30, 4, RecipeDifficulty.Medium, categoryId, null));
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         return (await response.Content.ReadFromJsonAsync<RecipeMutationResponse>(_jsonOptions))!;
+    }
+
+    [Fact]
+    public async Task RecipeMutation_WhenUserEmailNotConfirmed_Returns401Unauthorized()
+    {
+        string token;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            var tokenService = scope.ServiceProvider.GetRequiredService<ITokenService>();
+            var user = new ApplicationUser
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Email = $"unconf_recipe_{Guid.NewGuid():N}@culinaryblog.vn",
+                UserName = $"unconf_recipe_{Guid.NewGuid():N}",
+                DisplayName = "Unconfirmed Recipe Chef",
+                EmailConfirmed = false,
+                SecurityStamp = Guid.NewGuid().ToString("N")
+            };
+            var createResult = await userManager.CreateAsync(user, "Password123!");
+            createResult.Succeeded.Should().BeTrue();
+            token = tokenService.GenerateAccessToken(user, new List<string> { "Author" });
+        }
+
+        using var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var categoryId = await CreateCategoryAsync();
+
+        var response = await client.PostAsJsonAsync("/api/v1/recipes", new CreateRecipeRequest(
+            "Test Recipe", "Description", null, 15, 30, 4, RecipeDifficulty.Medium, categoryId, null));
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 }

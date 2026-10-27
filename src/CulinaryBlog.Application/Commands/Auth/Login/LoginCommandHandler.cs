@@ -53,16 +53,22 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, AuthResponse>
             throw AuthException.AccountLocked(unlockAt);
         }
 
-        // 5. Check if not allowed (e.g., email not confirmed)
+        // 5. Check if not allowed or password invalid
         if (signInResult.IsNotAllowed || !signInResult.Succeeded)
         {
             throw AuthException.InvalidCredentials();
         }
 
-        // 6. Get user roles
+        // 6. Check email confirmation gate
+        if (!user.EmailConfirmed)
+        {
+            throw AuthException.EmailNotConfirmed();
+        }
+
+        // 7. Get user roles
         var roles = await _userRepository.GetRolesAsync(user);
 
-        // 7. Begin transaction with Serializable isolation level to eliminate concurrent token race condition
+        // 8. Begin transaction with Serializable isolation level to eliminate concurrent token race condition
         await using var transaction = await _unitOfWork.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
 
         try

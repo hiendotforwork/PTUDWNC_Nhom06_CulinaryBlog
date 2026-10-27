@@ -12,6 +12,19 @@ export interface User {
   avatarUrl: string;
   bio?: string;
   role: "User" | "Admin";
+  roles?: string[];
+  createdAt: string;
+}
+
+export interface UserProfileResponse {
+  id: string;
+  displayName: string;
+  email: string;
+  userName: string;
+  avatarUrl: string | null;
+  bio: string | null;
+  roles: string[];
+  emailConfirmed: boolean;
   createdAt: string;
 }
 
@@ -109,6 +122,20 @@ export interface RegisterRequest {
   userName: string;
   displayName: string;
   password: string;
+}
+
+export interface RegistrationPendingResponse {
+  email: string;
+  emailConfirmationRequired: boolean;
+}
+
+export interface ConfirmEmailRequest {
+  userId: string;
+  token: string;
+}
+
+export interface ResendEmailConfirmationRequest {
+  email: string;
 }
 
 export interface LoginRequest {

@@ -8,12 +8,15 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using CulinaryBlog.Application.DTOs.Auth;
+using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Infrastructure.Data;
+using CulinaryBlog.Integration.Tests.Helpers;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.Identity;
 using Xunit;
 
 public class AuthControllerTests : IClassFixture<CustomWebApplicationFactory>
@@ -40,7 +43,7 @@ public class AuthControllerTests : IClassFixture<CustomWebApplicationFactory>
     }
 
     [Fact]
-    public async Task Register_WithValidData_Returns201CreatedWithAuthResponse()
+    public async Task Register_WithValidData_Returns201CreatedWithRegistrationPendingResponse()
     {
         // Arrange
         var request = CreateUniqueRegisterRequest("valid");
@@ -51,15 +54,14 @@ public class AuthControllerTests : IClassFixture<CustomWebApplicationFactory>
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Created);
 
-        var content = await response.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions);
+        var content = await response.Content.ReadFromJsonAsync<RegistrationPendingResponse>(_jsonOptions);
         content.Should().NotBeNull();
-        content!.AccessToken.Should().NotBeNullOrWhiteSpace();
-        content.RefreshToken.Should().NotBeNullOrWhiteSpace();
-        content.User.Should().NotBeNull();
-        content.User.Email.Should().Be(request.Email);
-        content.User.UserName.Should().Be(request.UserName);
-        content.User.DisplayName.Should().Be(request.DisplayName);
-        content.User.Roles.Should().Contain("Author");
+        content!.Email.Should().Be(request.Email);
+        content.EmailConfirmationRequired.Should().BeTrue();
+
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().NotContain("accessToken");
+        body.Should().NotContain("refreshToken");
     }
 
     [Fact]
@@ -137,21 +139,15 @@ public class AuthControllerTests : IClassFixture<CustomWebApplicationFactory>
     }
 
     [Fact]
-    public async Task Register_ResponseAccessToken_HasValidJwtStructureAndClaims()
+    public async Task ConfirmEmail_ResponseAccessToken_HasValidJwtStructureAndClaims()
     {
         // Arrange
         var request = CreateUniqueRegisterRequest("jwt_check");
-
-        // Act
-        var response = await _client.PostAsJsonAsync("/api/v1/auth/register", request);
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
-
-        var authResponse = await response.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions);
-        authResponse.Should().NotBeNull();
+        var authResponse = await AuthTestHelpers.RegisterConfirmedUserAsync(_client, _factory.Services, request);
 
         // Assert
         var handler = new JwtSecurityTokenHandler();
-        handler.CanReadToken(authResponse!.AccessToken).Should().BeTrue();
+        handler.CanReadToken(authResponse.AccessToken).Should().BeTrue();
 
         var jwt = handler.ReadJwtToken(authResponse.AccessToken);
         jwt.Claims.First(c => c.Type == JwtRegisteredClaimNames.Email).Value.Should().Be(request.Email);
@@ -162,10 +158,9 @@ public class AuthControllerTests : IClassFixture<CustomWebApplicationFactory>
     [Fact]
     public async Task Login_WithValidCredentials_Returns200OKWithTokens()
     {
-        // Arrange - register user first
+        // Arrange - register and confirm user first
         var registerRequest = CreateUniqueRegisterRequest("login_valid");
-        var regResponse = await _client.PostAsJsonAsync("/api/v1/auth/register", registerRequest);
-        regResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+        await AuthTestHelpers.RegisterConfirmedUserAsync(_client, _factory.Services, registerRequest);
 
         var loginRequest = new LoginRequest(registerRequest.Email, registerRequest.Password);
 
@@ -179,6 +174,25 @@ public class AuthControllerTests : IClassFixture<CustomWebApplicationFactory>
         authResponse!.AccessToken.Should().NotBeNullOrWhiteSpace();
         authResponse.RefreshToken.Should().NotBeNullOrWhiteSpace();
         authResponse.User.Email.Should().Be(registerRequest.Email);
+    }
+
+    [Fact]
+    public async Task Login_WhenUnconfirmed_Returns403EmailNotConfirmed()
+    {
+        // Arrange - register user without confirming
+        var registerRequest = CreateUniqueRegisterRequest("login_unconf");
+        var regResponse = await _client.PostAsJsonAsync("/api/v1/auth/register", registerRequest);
+        regResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var loginRequest = new LoginRequest(registerRequest.Email, registerRequest.Password);
+
+        // Act
+        var loginResponse = await _client.PostAsJsonAsync("/api/v1/auth/login", loginRequest);
+
+        // Assert
+        loginResponse.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        var body = await loginResponse.Content.ReadAsStringAsync();
+        body.Should().Contain("EMAIL_NOT_CONFIRMED");
     }
 
     [Fact]
@@ -303,12 +317,8 @@ public class AuthControllerTests : IClassFixture<CustomWebApplicationFactory>
     {
         // Arrange
         var registerRequest = CreateUniqueRegisterRequest("logout_active");
-        var registerResponse = await _client.PostAsJsonAsync("/api/v1/auth/register", registerRequest);
-        registerResponse.StatusCode.Should().Be(HttpStatusCode.Created);
-
-        var authContent = await registerResponse.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions);
-        authContent.Should().NotBeNull();
-        var rawRefreshToken = authContent!.RefreshToken;
+        var authContent = await AuthTestHelpers.RegisterConfirmedUserAsync(_client, _factory.Services, registerRequest);
+        var rawRefreshToken = authContent.RefreshToken;
         var tokenHash = RefreshToken.HashToken(rawRefreshToken);
 
         var logoutRequest = new LogoutRequest(rawRefreshToken);
@@ -351,10 +361,8 @@ public class AuthControllerTests : IClassFixture<CustomWebApplicationFactory>
     {
         // Arrange - register user to attach tokens to
         var registerRequest = CreateUniqueRegisterRequest("logout_exp_rev");
-        var registerResponse = await _client.PostAsJsonAsync("/api/v1/auth/register", registerRequest);
-        registerResponse.StatusCode.Should().Be(HttpStatusCode.Created);
-        var authContent = await registerResponse.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions);
-        var userId = authContent!.User.Id;
+        var authContent = await AuthTestHelpers.RegisterConfirmedUserAsync(_client, _factory.Services, registerRequest);
+        var userId = authContent.User.Id;
 
         var expiredRawToken = "expired-raw-token-" + Guid.NewGuid().ToString("N");
         var expiredTokenHash = RefreshToken.HashToken(expiredRawToken);
@@ -428,11 +436,11 @@ public class AuthControllerTests : IClassFixture<CustomWebApplicationFactory>
     [InlineData("malformed")]
     public async Task Logout_WithInvalidAuthorizationHeader_Returns204AndRevokesToken(string authorizationKind)
     {
-        var registerResponse = await _client.PostAsJsonAsync(
-            "/api/v1/auth/register",
+        var auth = await AuthTestHelpers.RegisterConfirmedUserAsync(
+            _client,
+            _factory.Services,
             CreateUniqueRegisterRequest("logout_invalid_auth"));
-        var auth = await registerResponse.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions);
-        var rawRefreshToken = auth!.RefreshToken;
+        var rawRefreshToken = auth.RefreshToken;
         var tokenHash = RefreshToken.HashToken(rawRefreshToken);
         using var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
@@ -466,12 +474,10 @@ public class AuthControllerTests : IClassFixture<CustomWebApplicationFactory>
     [Fact]
     public async Task Refresh_ValidToken_ReturnsNewTokens()
     {
-        // Arrange - register user to get initial tokens
+        // Arrange - register and confirm user to get initial tokens
         var registerRequest = CreateUniqueRegisterRequest("refresh_valid");
-        var regResponse = await _client.PostAsJsonAsync("/api/v1/auth/register", registerRequest);
-        regResponse.StatusCode.Should().Be(HttpStatusCode.Created);
-        var regContent = await regResponse.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions);
-        var originalRefreshToken = regContent!.RefreshToken;
+        var regContent = await AuthTestHelpers.RegisterConfirmedUserAsync(_client, _factory.Services, registerRequest);
+        var originalRefreshToken = regContent.RefreshToken;
 
         // Act
         var refreshResponse = await _client.PostAsJsonAsync("/api/v1/auth/refresh", new RefreshTokenRequest(originalRefreshToken));
@@ -498,12 +504,10 @@ public class AuthControllerTests : IClassFixture<CustomWebApplicationFactory>
     [Fact]
     public async Task Refresh_TokenRotation_OldTokenInvalidated()
     {
-        // Arrange - register user to get initial tokens
+        // Arrange - register and confirm user to get initial tokens
         var registerRequest = CreateUniqueRegisterRequest("refresh_reuse");
-        var regResponse = await _client.PostAsJsonAsync("/api/v1/auth/register", registerRequest);
-        regResponse.StatusCode.Should().Be(HttpStatusCode.Created);
-        var regContent = await regResponse.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions);
-        var originalRefreshToken = regContent!.RefreshToken;
+        var regContent = await AuthTestHelpers.RegisterConfirmedUserAsync(_client, _factory.Services, registerRequest);
+        var originalRefreshToken = regContent.RefreshToken;
 
         // First refresh
         var firstRefresh = await _client.PostAsJsonAsync("/api/v1/auth/refresh", new RefreshTokenRequest(originalRefreshToken));
@@ -514,6 +518,324 @@ public class AuthControllerTests : IClassFixture<CustomWebApplicationFactory>
 
         // Assert
         secondRefresh.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    private static string CreateValidJwt(params Claim[] claims)
+    {
+        var token = new JwtSecurityToken(
+            issuer: "CulinaryBlog",
+            audience: "CulinaryBlogApp",
+            claims: claims,
+            notBefore: DateTime.UtcNow.AddMinutes(-5),
+            expires: DateTime.UtcNow.AddHours(1),
+            signingCredentials: new SigningCredentials(
+                new SymmetricSecurityKey(Encoding.UTF8.GetBytes("CulinaryBlogDefaultSuperSecretKeyForDevelopmentAndTestingPurposesOnly32Chars!")),
+                SecurityAlgorithms.HmacSha256));
+
+        return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    [Fact]
+    public async Task GetCurrentUser_WithoutToken_Returns401()
+    {
+        var response = await _client.GetAsync("/api/v1/auth/me");
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task GetCurrentUser_WithValidToken_ReturnsProfile()
+    {
+        var registerRequest = CreateUniqueRegisterRequest("me_valid");
+        var regContent = await AuthTestHelpers.RegisterConfirmedUserAsync(_client, _factory.Services, registerRequest);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/me");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", regContent.AccessToken);
+
+        var response = await _client.SendAsync(request);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var rawJson = await response.Content.ReadAsStringAsync();
+        rawJson.Should().NotContain("passwordHash").And.NotContain("securityStamp");
+
+        var profile = JsonSerializer.Deserialize<UserProfileDto>(rawJson, _jsonOptions);
+        profile.Should().NotBeNull();
+        profile!.Id.Should().Be(regContent.User.Id);
+        profile.DisplayName.Should().Be(regContent.User.DisplayName);
+        profile.Email.Should().Be(regContent.User.Email);
+        profile.UserName.Should().Be(regContent.User.UserName);
+        profile.AvatarUrl.Should().BeNull();
+        profile.Bio.Should().BeNull();
+        profile.Roles.Should().Contain("Author");
+        profile.EmailConfirmed.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task GetCurrentUser_WithoutUserIdClaims_Returns401()
+    {
+        var token = CreateValidJwt(new Claim("unrelated_claim", "value"));
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/me");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var response = await _client.SendAsync(request);
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task GetCurrentUser_WhenUserDoesNotExist_Returns401()
+    {
+        var registerRequest = CreateUniqueRegisterRequest("me_deleted");
+        var regContent = await AuthTestHelpers.RegisterConfirmedUserAsync(_client, _factory.Services, registerRequest);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            var user = await userManager.FindByEmailAsync(registerRequest.Email);
+            user.Should().NotBeNull();
+            var deleteResult = await userManager.DeleteAsync(user!);
+            deleteResult.Succeeded.Should().BeTrue();
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/me");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", regContent.AccessToken);
+
+        var response = await _client.SendAsync(request);
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task PatchCurrentUser_WhenUserDoesNotExist_Returns401()
+    {
+        var registerRequest = CreateUniqueRegisterRequest("patch_deleted");
+        var regContent = await AuthTestHelpers.RegisterConfirmedUserAsync(_client, _factory.Services, registerRequest);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            var user = await userManager.FindByEmailAsync(registerRequest.Email);
+            user.Should().NotBeNull();
+            var deleteResult = await userManager.DeleteAsync(user!);
+            deleteResult.Succeeded.Should().BeTrue();
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Patch, "/api/v1/auth/me")
+        {
+            Content = JsonContent.Create(new { displayName = "New Name", bio = "New Bio" })
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", regContent.AccessToken);
+
+        var response = await _client.SendAsync(request);
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task ConfirmEmail_WithValidToken_Returns200WithAuthResponse()
+    {
+        string userId;
+        string token;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            var user = new ApplicationUser
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Email = $"confirm_valid_{Guid.NewGuid():N}@culinaryblog.vn",
+                UserName = $"confirm_user_{Guid.NewGuid():N}",
+                DisplayName = "Confirm Chef",
+                EmailConfirmed = false,
+                SecurityStamp = Guid.NewGuid().ToString("N")
+            };
+            var createResult = await userManager.CreateAsync(user, "Password123!");
+            createResult.Succeeded.Should().BeTrue();
+            userId = user.Id;
+            token = await userManager.GenerateEmailConfirmationTokenAsync(user);
+        }
+
+        var confirmRequest = new ConfirmEmailRequest(userId, token);
+        var response = await _client.PostAsJsonAsync("/api/v1/auth/email/confirm", confirmRequest);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var authResponse = await response.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions);
+        authResponse.Should().NotBeNull();
+        authResponse!.AccessToken.Should().NotBeNullOrWhiteSpace();
+        authResponse.RefreshToken.Should().NotBeNullOrWhiteSpace();
+        authResponse.User.Id.Should().Be(userId);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            var updatedUser = await userManager.FindByIdAsync(userId);
+            updatedUser!.EmailConfirmed.Should().BeTrue();
+        }
+    }
+
+    [Fact]
+    public async Task ConfirmEmail_WithInvalidToken_Returns400BadRequest()
+    {
+        string userId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            var user = new ApplicationUser
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Email = $"confirm_inv_{Guid.NewGuid():N}@culinaryblog.vn",
+                UserName = $"confirm_inv_{Guid.NewGuid():N}",
+                DisplayName = "Confirm Invalid",
+                EmailConfirmed = false,
+                SecurityStamp = Guid.NewGuid().ToString("N")
+            };
+            await userManager.CreateAsync(user, "Password123!");
+            userId = user.Id;
+        }
+
+        var confirmRequest = new ConfirmEmailRequest(userId, "completely-invalid-token");
+        var response = await _client.PostAsJsonAsync("/api/v1/auth/email/confirm", confirmRequest);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task ConfirmEmail_Replay_Returns409Conflict()
+    {
+        string userId;
+        string token;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            var user = new ApplicationUser
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Email = $"confirm_replay_{Guid.NewGuid():N}@culinaryblog.vn",
+                UserName = $"confirm_rep_{Guid.NewGuid():N}",
+                DisplayName = "Confirm Replay",
+                EmailConfirmed = false,
+                SecurityStamp = Guid.NewGuid().ToString("N")
+            };
+            await userManager.CreateAsync(user, "Password123!");
+            userId = user.Id;
+            token = await userManager.GenerateEmailConfirmationTokenAsync(user);
+        }
+
+        var confirmRequest = new ConfirmEmailRequest(userId, token);
+        var firstResponse = await _client.PostAsJsonAsync("/api/v1/auth/email/confirm", confirmRequest);
+        firstResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var secondResponse = await _client.PostAsJsonAsync("/api/v1/auth/email/confirm", confirmRequest);
+        secondResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
+    public async Task ConfirmEmail_GetMethod_Returns405MethodNotAllowed()
+    {
+        var response = await _client.GetAsync("/api/v1/auth/email/confirm");
+        response.StatusCode.Should().Be(HttpStatusCode.MethodNotAllowed);
+    }
+
+    [Fact]
+    public async Task ResendEmailConfirmation_AlwaysReturns202Accepted_NoEmailEnumeration()
+    {
+        var existingEmail = $"resend_exist_{Guid.NewGuid():N}@culinaryblog.vn";
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            var user = new ApplicationUser
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Email = existingEmail,
+                UserName = $"resend_user_{Guid.NewGuid():N}",
+                DisplayName = "Resend Chef",
+                EmailConfirmed = false,
+                SecurityStamp = Guid.NewGuid().ToString("N")
+            };
+            await userManager.CreateAsync(user, "Password123!");
+        }
+
+        // 1. Existing pending user
+        var response1 = await _client.PostAsJsonAsync("/api/v1/auth/email/resend", new ResendEmailConfirmationRequest(existingEmail));
+        response1.StatusCode.Should().Be(HttpStatusCode.Accepted);
+
+        // 2. Non-existent user
+        var nonExistentEmail = $"resend_none_{Guid.NewGuid():N}@culinaryblog.vn";
+        var response2 = await _client.PostAsJsonAsync("/api/v1/auth/email/resend", new ResendEmailConfirmationRequest(nonExistentEmail));
+        response2.StatusCode.Should().Be(HttpStatusCode.Accepted);
+    }
+
+    [Fact]
+    public async Task ResendEmailConfirmation_WithInvalidEmail_Returns422()
+    {
+        var response = await _client.PostAsJsonAsync("/api/v1/auth/email/resend", new ResendEmailConfirmationRequest("invalid-email"));
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+    }
+
+    [Fact]
+    public async Task ResendEmailConfirmation_GetMethod_Returns405MethodNotAllowed()
+    {
+        var response = await _client.GetAsync("/api/v1/auth/email/resend");
+        response.StatusCode.Should().Be(HttpStatusCode.MethodNotAllowed);
+    }
+
+    [Fact]
+    public async Task ProtectedEndpoints_WhenUserEmailNotConfirmed_Returns401Unauthorized()
+    {
+        string token;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            var tokenService = scope.ServiceProvider.GetRequiredService<ITokenService>();
+            var user = new ApplicationUser
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Email = $"unconf_jwt_{Guid.NewGuid():N}@culinaryblog.vn",
+                UserName = $"unconf_jwt_{Guid.NewGuid():N}",
+                DisplayName = "Unconfirmed Chef",
+                EmailConfirmed = false,
+                SecurityStamp = Guid.NewGuid().ToString("N")
+            };
+            var createResult = await userManager.CreateAsync(user, "Password123!");
+            createResult.Succeeded.Should().BeTrue();
+            token = tokenService.GenerateAccessToken(user, new List<string> { "Author" });
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/me");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var response = await _client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+
+        var publicResponse = await _client.GetAsync("/api/v1/categories");
+        publicResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var resendResponse = await _client.PostAsJsonAsync("/api/v1/auth/email/resend", new ResendEmailConfirmationRequest("test@culinaryblog.vn"));
+        resendResponse.StatusCode.Should().Be(HttpStatusCode.Accepted);
+    }
+
+    [Fact]
+    public async Task ProtectedEndpoints_WhenUserEmailConfirmedBecomesFalse_RevokesAccessImmediately()
+    {
+        var registerRequest = CreateUniqueRegisterRequest("revoke_conf");
+        var authContent = await AuthTestHelpers.RegisterConfirmedUserAsync(_client, _factory.Services, registerRequest);
+
+        using (var initialReq = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/me"))
+        {
+            initialReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", authContent.AccessToken);
+            var initRes = await _client.SendAsync(initialReq);
+            initRes.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            var user = await userManager.FindByIdAsync(authContent.User.Id);
+            user!.EmailConfirmed = false;
+            await userManager.UpdateAsync(user);
+        }
+
+        using var secondReq = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/me");
+        secondReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", authContent.AccessToken);
+        var secondRes = await _client.SendAsync(secondReq);
+
+        secondRes.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 }
 

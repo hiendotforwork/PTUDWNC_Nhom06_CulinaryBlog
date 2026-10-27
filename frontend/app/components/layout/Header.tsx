@@ -22,7 +22,7 @@ import { Button } from "../ui/Button";
 
 export const Header: React.FC = () => {
   const router = useRouter();
-  const { currentUser, logout, login, recipes, categories } = useApp();
+  const { currentUser, logout, recipes, categories } = useApp();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -196,21 +196,6 @@ export const Header: React.FC = () => {
             )}
           </div>
 
-          {/* Quick Demo Switcher (Author vs Guest) */}
-          <button
-            onClick={() => {
-              if (currentUser) {
-                void logout();
-              } else {
-                login("hoanglinh@culinaryblog.vn");
-              }
-            }}
-            title="Nhấp để đổi nhanh giữa vai trò Người dùng đã đăng nhập và Khách xem"
-            className="hidden xl:flex items-center gap-1 text-[11px] font-medium px-2.5 py-1 rounded-full bg-[#FAF9F6] dark:bg-[#2A2723] border border-[#DCD8D2] text-[#8A817C] hover:border-[#C98F7D] hover:text-[#C98F7D] transition-colors cursor-pointer"
-          >
-            <span className="w-2 h-2 rounded-full bg-[#6B8E6B]" />
-            <span>Vai trò: {currentUser ? "Đầu bếp (Auth)" : "Khách xem (Guest)"}</span>
-          </button>
 
           {/* Create Recipe Button */}
           <Link href="/recipes/create">

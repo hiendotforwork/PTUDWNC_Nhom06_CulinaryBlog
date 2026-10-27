@@ -256,6 +256,38 @@ X-Account-Locked-Until: 2026-06-04T15:45:00Z
 
 ---
 
+#### AUTH_LOGIN_003: Email Not Confirmed
+
+| Thuộc tính | Giá trị |
+|------------|----------|
+| **Error Code** | `AUTH_LOGIN_003` |
+| **HTTP Status** | 403 Forbidden |
+| **Title** | "Email not confirmed" |
+| **Detail** | "Email chưa được xác nhận. Vui lòng kiểm tra hộp thư hoặc yêu cầu gửi lại email xác nhận." |
+| **Extension Code** | `AUTH_EMAIL_NOT_CONFIRMED` |
+
+**Response Example:**
+```json
+{
+  "type": "https://culinaryblog.com/errors/auth/AUTH_EMAIL_NOT_CONFIRMED",
+  "title": "Email not confirmed",
+  "status": 403,
+  "detail": "Email chưa được xác nhận. Vui lòng kiểm tra hộp thư hoặc yêu cầu gửi lại email xác nhận.",
+  "instance": "/api/v1/auth/login",
+  "extensions": {
+    "code": "AUTH_EMAIL_NOT_CONFIRMED",
+    "timestamp": "2026-06-04T15:30:00Z",
+    "traceId": "4bf2c8d3-1a5e-4b9c-8f7d-2e6a1b3c5d7e"
+  }
+}
+```
+
+**When Occurs:**
+- User credentials are correct, but email has not been verified yet (`EmailConfirmed == false`).
+- System prevents unconfirmed accounts from logging in and accessing protected APIs.
+
+---
+
 ### 2.3. Token Errors (AUTH_TOKEN_*)
 
 #### AUTH_TOKEN_001: Token Expired
@@ -557,27 +589,26 @@ if (token.ReplacedByTokenHash != null && !isValidRotation)
 
 ### 2.6. Email Verification Errors (AUTH_EMAIL_*)
 
-#### AUTH_EMAIL_001: Verification Token Invalid
+#### AUTH_EMAIL_001: Verification Token Invalid or Expired
 
 | Thuộc tính | Giá trị |
 |------------|----------|
 | **Error Code** | `AUTH_EMAIL_001` |
 | **HTTP Status** | 400 Bad Request |
 | **Title** | "Invalid verification token" |
-| **Detail** | "The email verification token is invalid or has already been used." |
-| **Extension Code** | `AUTH_VERIFY_TOKEN_INVALID` |
+| **Detail** | "Token xác nhận email không hợp lệ hoặc đã hết hạn." |
+| **Extension Code** | `AUTH_INVALID_VERIFICATION_TOKEN` |
 
 **Response Example:**
 ```json
 {
-  "type": "https://culinaryblog.com/errors/auth/AUTH_EMAIL_001",
+  "type": "https://culinaryblog.com/errors/auth/AUTH_INVALID_VERIFICATION_TOKEN",
   "title": "Invalid verification token",
   "status": 400,
-  "detail": "The email verification token is invalid or has already been used.",
-  "instance": "/api/v1/auth/verify-email",
+  "detail": "Token xác nhận email không hợp lệ hoặc đã hết hạn.",
+  "instance": "/api/v1/auth/email/confirm",
   "extensions": {
-    "code": "AUTH_VERIFY_TOKEN_INVALID",
-    "reason": "INVALID_TOKEN",
+    "code": "AUTH_INVALID_VERIFICATION_TOKEN",
     "timestamp": "2026-06-04T15:30:00Z",
     "traceId": "4bf2c8d3-1a5e-4b9c-8f7d-2e6a1b3c5d7e"
   }
@@ -586,44 +617,31 @@ if (token.ReplacedByTokenHash != null && !isValidRotation)
 
 ---
 
-#### AUTH_EMAIL_002: Verification Token Expired
+#### AUTH_EMAIL_002: User Not Found
 
 | Thuộc tính | Giá trị |
 |------------|----------|
 | **Error Code** | `AUTH_EMAIL_002` |
-| **HTTP Status** | 400 Bad Request |
-| **Title** | "Verification token expired" |
-| **Detail** | "The email verification token has expired. Please request a new verification email." |
-| **Extension Code** | `AUTH_VERIFY_TOKEN_EXPIRED` |
+| **HTTP Status** | 404 Not Found |
+| **Title** | "User not found" |
+| **Detail** | "Người dùng không tồn tại." |
+| **Extension Code** | `AUTH_USER_NOT_FOUND` |
 
 **Response Example:**
 ```json
 {
-  "type": "https://culinaryblog.com/errors/auth/AUTH_EMAIL_002",
-  "title": "Verification token expired",
-  "status": 400,
-  "detail": "The email verification token has expired. Please request a new verification email.",
-  "instance": "/api/v1/auth/verify-email",
+  "type": "https://culinaryblog.com/errors/auth/AUTH_USER_NOT_FOUND",
+  "title": "User not found",
+  "status": 404,
+  "detail": "Người dùng không tồn tại.",
+  "instance": "/api/v1/auth/email/confirm",
   "extensions": {
-    "code": "AUTH_VERIFY_TOKEN_EXPIRED",
-    "expiredAt": "2026-06-03T15:30:00Z",
+    "code": "AUTH_USER_NOT_FOUND",
     "timestamp": "2026-06-04T15:30:00Z",
     "traceId": "4bf2c8d3-1a5e-4b9c-8f7d-2e6a1b3c5d7e"
   }
 }
 ```
-
----
-
-#### AUTH_EMAIL_003: Email Already Verified
-
-| Thuộc tính | Giá trị |
-|------------|----------|
-| **Error Code** | `AUTH_EMAIL_003` |
-| **HTTP Status** | 400 Bad Request |
-| **Title** | "Email already verified" |
-| **Detail** | "This email has already been verified." |
-| **Extension Code** | `AUTH_EMAIL_ALREADY_VERIFIED` |
 
 ---
 
@@ -674,13 +692,14 @@ X-RateLimit-Reset: 1717500060
 
 | HTTP Status | Error Codes |
 |-------------|-------------|
-| **400 Bad Request** | AUTH_EMAIL_001, AUTH_EMAIL_002, AUTH_EMAIL_003 |
+| **400 Bad Request** | AUTH_EMAIL_001 (AUTH_INVALID_VERIFICATION_TOKEN) |
 | **401 Unauthorized** | AUTH_LOGIN_001, AUTH_TOKEN_001, AUTH_TOKEN_002, AUTH_TOKEN_003, AUTH_TOKEN_004, AUTH_GOOGLE_001 |
-| **404 Not Found** | AUTH_PROFILE_001 |
+| **403 Forbidden** | AUTH_LOGIN_003 (AUTH_EMAIL_NOT_CONFIRMED) |
+| **404 Not Found** | AUTH_PROFILE_001, AUTH_EMAIL_002 (AUTH_USER_NOT_FOUND) |
 | **409 Conflict** | AUTH_REG_001, AUTH_REG_002 |
 | **422 Unprocessable Entity** | AUTH_REG_003, AUTH_PROFILE_002 |
 | **423 Locked** | AUTH_LOGIN_002 |
-| **429 Too Many Requests** | AUTH_RATE_001 |
+| **429 Too Many Requests** | AUTH_RATE_001, AUTH_RATE_LIMIT_EXCEEDED |
 | **500 Internal Server Error** | (Generic, see 3.2) |
 | **502 Bad Gateway** | AUTH_GOOGLE_002 |
 
