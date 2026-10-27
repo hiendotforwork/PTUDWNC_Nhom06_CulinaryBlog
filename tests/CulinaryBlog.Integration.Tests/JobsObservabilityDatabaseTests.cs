@@ -11,7 +11,9 @@ using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Infrastructure.Data;
 using Hangfire;
+using Hangfire.Common;
 using Hangfire.PostgreSql;
+using Hangfire.States;
 using ImageMagick;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
@@ -20,6 +22,7 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.IdentityModel.Tokens;
 using Xunit;
+using Moq;
 
 namespace CulinaryBlog.Integration.Tests;
 
@@ -55,6 +58,25 @@ public sealed class JobsObservabilityDatabaseTests
         await db.Database.SqlQueryRaw<BackgroundTaskRow>("""
             SELECT "Id", "Kind", "TargetId", "CompletedAt" FROM culinary."BackgroundTasks"
             """).Where(x => x.Id == id).Select(x => x.CompletedAt != null).SingleAsync();
+
+    [JobsDatabaseFact]
+    public async Task PasswordResetOutboxTaskDispatchesToPasswordResetEmailJob()
+    {
+        await using var db = Database();
+        var id = Guid.NewGuid();
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO culinary."BackgroundTasks" ("Id", "Kind", "TargetId")
+            VALUES ({id}, {"password-reset-email"}, {Guid.NewGuid().ToString("N")})
+            """);
+        var jobs = new Mock<IBackgroundJobClient>();
+        jobs.Setup(client => client.Create(It.Is<Job>(job => job.Type == typeof(PasswordResetEmailJob)), It.IsAny<IState>()))
+            .Returns("test-job");
+
+        await BackgroundTaskDispatcher.DispatchAsync(db, jobs.Object, CancellationToken.None);
+
+        jobs.Verify(client => client.Create(It.Is<Job>(job => job.Type == typeof(PasswordResetEmailJob)), It.IsAny<IState>()), Times.Once);
+        jobs.Verify(client => client.Create(It.Is<Job>(job => job.Type == typeof(ImageResizeJob)), It.IsAny<IState>()), Times.Never);
+    }
     private static async Task<ApplicationUser> User(ApplicationDbContext db)
     {
         var id = Guid.NewGuid().ToString("N");
@@ -427,6 +449,8 @@ public sealed class JobsObservabilityDatabaseTests
         public Task SendWelcomeEmailAsync(string email, string name, CancellationToken ct = default)
         { Calls++; if (Fail) throw new IOException("SMTP unavailable"); return Task.CompletedTask; }
         public Task SendEmailConfirmationAsync(string email, string name, string link, CancellationToken ct = default)
+        { Calls++; if (Fail) throw new IOException("SMTP unavailable"); return Task.CompletedTask; }
+        public Task SendPasswordResetAsync(string email, string name, string link, CancellationToken ct = default)
         { Calls++; if (Fail) throw new IOException("SMTP unavailable"); return Task.CompletedTask; }
     }
     private sealed class ImageReader : IOriginalImageReader

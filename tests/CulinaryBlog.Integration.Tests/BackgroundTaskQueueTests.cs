@@ -67,4 +67,19 @@ public sealed class BackgroundTaskQueueTests
             .ToList();
         Assert.Single(resizeTasks);
     }
+
+    [Fact]
+    public async Task PasswordResetRequestCreatesOutboxTaskWithOnlyUserId()
+    {
+        BackgroundTaskExecution.InMemoryTasks.Clear();
+        using var db = CreateInMemoryDbContext();
+        var queue = new DatabaseBackgroundTaskQueue(db);
+        var userId = Guid.NewGuid().ToString("N");
+
+        await queue.PasswordResetEmailAsync(userId, CancellationToken.None);
+
+        var task = Assert.Single(BackgroundTaskExecution.InMemoryTasks.Values);
+        Assert.Equal("password-reset-email", task.Kind);
+        Assert.Equal(userId, task.TargetId);
+    }
 }

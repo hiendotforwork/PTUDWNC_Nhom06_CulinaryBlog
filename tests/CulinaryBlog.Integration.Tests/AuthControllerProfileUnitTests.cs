@@ -92,6 +92,7 @@ public class AuthControllerProfileUnitTests
             null,
             new[] { "Author" },
             true,
+            false,
             DateTime.UtcNow
         );
 
@@ -159,6 +160,7 @@ public class AuthControllerProfileUnitTests
             null,
             "Updated Bio",
             new[] { "Author" },
+            true,
             true,
             DateTime.UtcNow
         );
