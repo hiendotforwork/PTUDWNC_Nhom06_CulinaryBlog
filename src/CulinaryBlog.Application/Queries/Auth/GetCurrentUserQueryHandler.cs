@@ -27,6 +27,7 @@ public class GetCurrentUserQueryHandler : IRequestHandler<GetCurrentUserQuery, U
         }
 
         var roles = await _userRepository.GetRolesAsync(user);
+        var hasPassword = await _userRepository.HasPasswordAsync(user, cancellationToken);
 
         return new UserProfileDto(
             Id: user.Id,
@@ -37,6 +38,7 @@ public class GetCurrentUserQueryHandler : IRequestHandler<GetCurrentUserQuery, U
             Bio: user.Bio,
             Roles: roles?.ToArray() ?? Array.Empty<string>(),
             EmailConfirmed: user.EmailConfirmed,
+            HasPassword: hasPassword,
             CreatedAt: user.CreatedAt
         );
     }

@@ -25,6 +25,7 @@ export interface UserProfileResponse {
   bio: string | null;
   roles: string[];
   emailConfirmed: boolean;
+  hasPassword: boolean;
   createdAt: string;
 }
 
