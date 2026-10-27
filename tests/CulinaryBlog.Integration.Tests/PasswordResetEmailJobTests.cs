@@ -86,7 +86,6 @@ public sealed class PasswordResetEmailJobTests
     [Fact]
     public async Task EligibleUserGetsUsableResetFragmentAndTaskCompletes()
     {
-        BackgroundTaskExecution.InMemoryTasks.Clear();
         var (db, users, user) = await CreateTestContext();
         var taskId = Guid.NewGuid();
         BackgroundTaskExecution.InMemoryTasks[taskId] = new BackgroundTaskRow
@@ -114,7 +113,6 @@ public sealed class PasswordResetEmailJobTests
     [Fact]
     public async Task IneligibleUserDoesNotReceiveEmailAndTaskCompletes()
     {
-        BackgroundTaskExecution.InMemoryTasks.Clear();
         var (db, users, user) = await CreateTestContext(eligible: false, confirmed: true);
         var taskId = Guid.NewGuid();
         BackgroundTaskExecution.InMemoryTasks[taskId] = new BackgroundTaskRow
@@ -133,7 +131,6 @@ public sealed class PasswordResetEmailJobTests
     [Fact]
     public async Task MissingUserDoesNotReceiveEmailAndTaskCompletes()
     {
-        BackgroundTaskExecution.InMemoryTasks.Clear();
         var (db, users, _) = await CreateTestContext();
         var taskId = Guid.NewGuid();
         BackgroundTaskExecution.InMemoryTasks[taskId] = new BackgroundTaskRow
@@ -152,7 +149,6 @@ public sealed class PasswordResetEmailJobTests
     [Fact]
     public async Task EmailFailureLeavesTaskIncompleteForRetry()
     {
-        BackgroundTaskExecution.InMemoryTasks.Clear();
         var (db, users, user) = await CreateTestContext();
         var taskId = Guid.NewGuid();
         BackgroundTaskExecution.InMemoryTasks[taskId] = new BackgroundTaskRow
