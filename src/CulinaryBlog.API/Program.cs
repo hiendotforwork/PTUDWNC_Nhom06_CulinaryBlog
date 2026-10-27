@@ -211,6 +211,11 @@ builder.Services.AddRateLimiter(options =>
         RateLimitPartition.GetFixedWindowLimiter(
             context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
             _ => new FixedWindowRateLimiterOptions { PermitLimit = resendPermitLimit, Window = TimeSpan.FromMinutes(1) }));
+    var passwordResetPermitLimit = builder.Configuration.GetValue<int?>("RateLimits:PasswordResetPermitLimit") ?? (isTesting ? 1000 : 5);
+    options.AddPolicy("PasswordResetRateLimit", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
+            _ => new FixedWindowRateLimiterOptions { PermitLimit = passwordResetPermitLimit, Window = TimeSpan.FromMinutes(1) }));
 });
 
 builder.Services.AddControllers().ConfigureApiBehaviorOptions(options =>
