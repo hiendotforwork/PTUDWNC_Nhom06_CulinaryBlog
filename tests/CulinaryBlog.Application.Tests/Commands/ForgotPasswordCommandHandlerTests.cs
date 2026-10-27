@@ -4,6 +4,7 @@ using CulinaryBlog.Application.Commands.Auth.ForgotPassword;
 using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Domain.Entities;
 using FluentAssertions;
+using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
 
@@ -12,12 +13,13 @@ public class ForgotPasswordCommandHandlerTests
     private readonly Mock<IUserRepository> _users = new();
     private readonly Mock<IBackgroundTaskQueue> _queue = new();
     private readonly Mock<IPasswordResetRequestLimiter> _limiter = new();
+    private readonly Mock<ILogger<ForgotPasswordCommandHandler>> _logger = new();
     private readonly ForgotPasswordCommandHandler _handler;
     private readonly ApplicationUser _user = new() { Id = "user-1", EmailConfirmed = true };
 
     public ForgotPasswordCommandHandlerTests()
     {
-        _handler = new ForgotPasswordCommandHandler(_users.Object, _queue.Object, _limiter.Object);
+        _handler = new ForgotPasswordCommandHandler(_users.Object, _queue.Object, _limiter.Object, _logger.Object);
         _limiter.Setup(x => x.TryAcquireAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
         _users.Setup(x => x.FindByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(_user);
         _users.Setup(x => x.HasPasswordAsync(_user, It.IsAny<CancellationToken>())).ReturnsAsync(true);
@@ -94,6 +96,17 @@ public class ForgotPasswordCommandHandlerTests
 
         _users.Verify(x => x.FindByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         _queue.Verify(x => x.PasswordResetEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task QueueFailureStillReturnsAcceptedResult()
+    {
+        _queue.Setup(x => x.PasswordResetEmailAsync("user-1", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new IOException("Outbox unavailable"));
+
+        var result = await _handler.Handle(new ForgotPasswordCommand("user@example.com"), CancellationToken.None);
+
+        result.Should().Be(MediatR.Unit.Value);
     }
 
     [Theory]

@@ -2,11 +2,13 @@ namespace CulinaryBlog.Application.Commands.Auth.ForgotPassword;
 
 using CulinaryBlog.Application.Interfaces;
 using MediatR;
+using Microsoft.Extensions.Logging;
 
 public sealed class ForgotPasswordCommandHandler(
     IUserRepository users,
     IBackgroundTaskQueue backgroundTasks,
-    IPasswordResetRequestLimiter limiter) : IRequestHandler<ForgotPasswordCommand, Unit>
+    IPasswordResetRequestLimiter limiter,
+    ILogger<ForgotPasswordCommandHandler> logger) : IRequestHandler<ForgotPasswordCommand, Unit>
 {
     public async Task<Unit> Handle(ForgotPasswordCommand request, CancellationToken cancellationToken)
     {
@@ -30,7 +32,19 @@ public sealed class ForgotPasswordCommandHandler(
         if (user is null || !user.EmailConfirmed || !await users.HasPasswordAsync(user, cancellationToken))
             return Unit.Value;
 
-        await backgroundTasks.PasswordResetEmailAsync(user.Id, cancellationToken);
+        try
+        {
+            await backgroundTasks.PasswordResetEmailAsync(user.Id, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(exception, "Failed to enqueue password reset email for user {UserId}", user.Id);
+        }
+
         return Unit.Value;
     }
 }

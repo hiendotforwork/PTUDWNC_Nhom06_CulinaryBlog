@@ -2,10 +2,12 @@
 
 import React, { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Lock } from "lucide-react";
 import { Input } from "../components/ui/Input";
 import { Button } from "../components/ui/Button";
 import { resetPassword } from "../lib/api";
+import * as auth from "../lib/auth";
 
 const subscribeToHash = (callback: () => void) => {
   window.addEventListener("hashchange", callback);
@@ -13,6 +15,7 @@ const subscribeToHash = (callback: () => void) => {
 };
 
 export default function ResetPasswordPage() {
+  const router = useRouter();
   const hash = useSyncExternalStore(subscribeToHash, () => window.location.hash, () => "");
   const { userId, token } = useMemo(() => {
     const params = new URLSearchParams(hash.slice(1));
@@ -41,6 +44,8 @@ export default function ResetPasswordPage() {
     try {
       await resetPassword({ userId, token, newPassword });
       setCompleted(true);
+      auth.clearAuth();
+      router.push("/login");
     } catch (err) {
       const apiError = err as { errorCode?: string; message?: string };
       if (apiError.errorCode === "AUTH_PASSWORD_RESET_INVALID") setInvalidToken(true);
