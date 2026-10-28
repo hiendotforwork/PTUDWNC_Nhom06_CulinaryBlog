@@ -125,6 +125,24 @@ public sealed class RedisFixedWindowRateLimiterTests
     }
 
     [Fact]
+    public async Task AcquireAsync_LocalFallbackDoesNotOvergrantMixedPermitCounts()
+    {
+        var redis = CreateMultiplexer(FailingDatabase().Object);
+        using var limiter = CreateLimiter(redis.Object, "fallback-mixed", "partition", 3, TimeSpan.FromMinutes(1));
+        var requests = new[] { 1, 2, 1, 2, 1, 2 };
+
+        var leases = await Task.WhenAll(requests.Select(count => limiter.AcquireAsync(count).AsTask()));
+        try
+        {
+            Assert.InRange(leases.Select((lease, index) => lease.IsAcquired ? requests[index] : 0).Sum(), 1, 3);
+        }
+        finally
+        {
+            foreach (var lease in leases) lease.Dispose();
+        }
+    }
+
+    [Fact]
     public async Task AcquireAsync_PropagatesCancellationWithoutUsingFallback()
     {
         var database = new Mock<IDatabase>(MockBehavior.Strict);
@@ -137,6 +155,34 @@ public sealed class RedisFixedWindowRateLimiterTests
             await limiter.AcquireAsync(1, cancellation.Token));
         database.Verify(db => db.ScriptEvaluateAsync(
             It.IsAny<string>(), It.IsAny<RedisKey[]>(), It.IsAny<RedisValue[]>(), It.IsAny<CommandFlags>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task AcquireAsync_PropagatesCancellationAfterPendingRedisCommandWithoutUsingFallback()
+    {
+        var pendingResult = new TaskCompletionSource<RedisResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var commandStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var database = new Mock<IDatabase>();
+        database.SetupSequence(db => db.ScriptEvaluateAsync(
+                It.IsAny<string>(), It.IsAny<RedisKey[]>(), It.IsAny<RedisValue[]>(), It.IsAny<CommandFlags>()))
+            .Returns(() =>
+            {
+                commandStarted.SetResult();
+                return pendingResult.Task;
+            })
+            .ReturnsAsync(ScriptResult(acquired: true, retryMilliseconds: 0));
+        var redis = CreateMultiplexer(database.Object);
+        using var limiter = CreateLimiter(redis.Object, "cancel-pending", "partition", 1, TimeSpan.FromMinutes(1));
+        using var cancellation = new CancellationTokenSource();
+
+        var acquire = limiter.AcquireAsync(1, cancellation.Token).AsTask();
+        await commandStarted.Task;
+        cancellation.Cancel();
+        pendingResult.SetResult(ScriptResult(acquired: true, retryMilliseconds: 0));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => acquire);
+        using var afterCancellation = await limiter.AcquireAsync(1);
+        Assert.True(afterCancellation.IsAcquired);
     }
 
     [Fact]
