@@ -62,6 +62,9 @@ public class UpdateProfileCommandHandlerTests
         _userRepositoryMock
             .Setup(r => r.GetRolesAsync(user))
             .ReturnsAsync(new List<string> { "Author" });
+        _userRepositoryMock
+            .Setup(r => r.HasPasswordAsync(user, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
 
         // Only update DisplayName, leave Bio null (omitted)
         var command = new UpdateProfileCommand("user-123", "Updated Name", null);
@@ -72,6 +75,7 @@ public class UpdateProfileCommandHandlerTests
         result.AvatarUrl.Should().Be("https://example.com/avatar.jpg");
         result.Email.Should().Be("user@example.com");
         result.UserName.Should().Be("testuser");
+        result.HasPassword.Should().BeTrue();
 
         _userRepositoryMock.Verify(r => r.UpdateAsync(
             It.Is<ApplicationUser>(u => u.Id == "user-123" && u.DisplayName == "Updated Name" && u.Bio == "Original bio"),

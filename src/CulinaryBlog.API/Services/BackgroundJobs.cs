@@ -96,6 +96,64 @@ public sealed class EmailVerificationJob(
     }
 }
 
+public sealed class PasswordResetEmailJob(
+    ApplicationDbContext db,
+    IUserRepository users,
+    IEmailService email,
+    IConfiguration configuration,
+    IWebHostEnvironment environment,
+    ILogger<PasswordResetEmailJob> logger)
+{
+    [AutomaticRetry(Attempts = 3, DelaysInSeconds = new[] { 60, 300, 1800 }, OnAttemptsExceeded = AttemptsExceededAction.Fail)]
+    public async Task RunAsync(Guid taskId, CancellationToken ct)
+    {
+        using var activity = ObservabilityTelemetry.Activities.StartActivity("job.password-reset-email");
+        var baseUrl = configuration["Site:BaseUrl"];
+        if (environment.IsProduction())
+        {
+            if (string.IsNullOrWhiteSpace(baseUrl))
+                throw new InvalidOperationException("Site:BaseUrl is required in production.");
+            if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var prodSite) || prodSite.Scheme != "https" ||
+                !string.IsNullOrEmpty(prodSite.UserInfo) || !string.IsNullOrEmpty(prodSite.Query) || !string.IsNullOrEmpty(prodSite.Fragment))
+                throw new InvalidOperationException("Site:BaseUrl must be an absolute HTTPS URL without credentials, query or fragment in production.");
+        }
+        else
+        {
+            baseUrl ??= "http://localhost:3000";
+            if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var devSite) || devSite.Scheme is not ("http" or "https") ||
+                !string.IsNullOrEmpty(devSite.UserInfo) || !string.IsNullOrEmpty(devSite.Query) || !string.IsNullOrEmpty(devSite.Fragment))
+                throw new InvalidOperationException("Site:BaseUrl must be an absolute HTTP(S) URL without credentials, query or fragment.");
+        }
+
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var task = await BackgroundTaskExecution.LockAsync(db, taskId, "password-reset-email", ct);
+        if (task is null) return;
+
+        var user = await users.FindByIdAsync(task.TargetId, ct);
+        if (user is null || !user.EmailConfirmed || string.IsNullOrWhiteSpace(user.Email) || !await users.HasPasswordAsync(user, ct))
+        {
+            await BackgroundTaskExecution.CompleteAsync(db, taskId, ct);
+            await tx.CommitAsync(ct);
+            return;
+        }
+
+        try
+        {
+            var token = await users.GeneratePasswordResetTokenAsync(user, ct);
+            var link = $"{baseUrl.TrimEnd('/')}/reset-password#userId={Uri.EscapeDataString(user.Id)}&token={Uri.EscapeDataString(token)}";
+            await email.SendPasswordResetAsync(user.Email, user.DisplayName, link, ct);
+            await BackgroundTaskExecution.CompleteAsync(db, taskId, ct);
+            await tx.CommitAsync(ct);
+            logger.LogInformation("Password reset email task {TaskId} completed for recipient", taskId);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Password reset email task {TaskId} failed", taskId);
+            throw;
+        }
+    }
+}
+
 public interface IOriginalImageReader
 {
     Task<MemoryStream> ReadAsync(string url, CancellationToken ct);

@@ -6,15 +6,23 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
 
 public class CustomWebApplicationFactory : WebApplicationFactory<Program>
 {
     private readonly string _databaseName = "IntegrationTestDb_" + Guid.NewGuid();
+    public int? PasswordResetPermitLimit { get; set; }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
         builder.ConfigureLogging(logging => logging.ClearProviders());
+        if (PasswordResetPermitLimit.HasValue)
+            builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["RateLimits:PasswordResetPermitLimit"] = PasswordResetPermitLimit.Value.ToString()
+                }));
 
         builder.ConfigureServices(services =>
         {

@@ -9,6 +9,9 @@ public record SignInResult(
     DateTime? LockoutEnd = null
 );
 
+public record UserOperationError(string Code, string Description);
+public record UserOperationResult(bool Succeeded, IReadOnlyList<UserOperationError> Errors);
+
 public interface IUserRepository
 {
     Task<ApplicationUser?> FindByIdAsync(string userId, CancellationToken cancellationToken = default);
@@ -25,4 +28,8 @@ public interface IUserRepository
     Task<string> GenerateEmailConfirmationTokenAsync(ApplicationUser user, CancellationToken cancellationToken = default);
     Task<bool> VerifyEmailConfirmationTokenAsync(ApplicationUser user, string token, CancellationToken cancellationToken = default);
     Task<(bool Succeeded, IEnumerable<string> Errors)> ConfirmEmailAsync(ApplicationUser user, string token, CancellationToken cancellationToken = default);
+    Task<bool> HasPasswordAsync(ApplicationUser user, CancellationToken cancellationToken = default);
+    Task<string> GeneratePasswordResetTokenAsync(ApplicationUser user, CancellationToken cancellationToken = default);
+    Task<UserOperationResult> ChangePasswordAsync(ApplicationUser user, string currentPassword, string newPassword, CancellationToken cancellationToken = default);
+    Task<UserOperationResult> ResetPasswordAsync(ApplicationUser user, string token, string newPassword, CancellationToken cancellationToken = default);
 }

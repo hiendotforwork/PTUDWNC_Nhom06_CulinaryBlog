@@ -8,6 +8,7 @@ import {
   ApiError,
   AuthResponse,
   Category,
+  ChangePasswordRequest,
   DifficultyLevel,
   Ingredient,
   LoginRequest,
@@ -17,6 +18,8 @@ import {
   RecipeStep,
   RegisterRequest,
   RegistrationPendingResponse,
+  PasswordResetRequest,
+  ResetPasswordRequest,
   UserProfileResponse,
 } from "./types";
 import { getToken, refreshAccessToken, clearAuth } from "./auth";
@@ -153,6 +156,32 @@ export async function resendEmailConfirmation(email: string): Promise<void> {
   if (!res.ok) {
     await handleResponse<void>(res);
   }
+}
+
+export async function requestPasswordReset(email: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/v1/auth/password/forgot`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email } satisfies PasswordResetRequest),
+  });
+  if (!res.ok) await handleResponse<never>(res);
+}
+
+export async function resetPassword(data: ResetPasswordRequest): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/v1/auth/password/reset`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) await handleResponse<never>(res);
+}
+
+export async function changePassword(data: ChangePasswordRequest): Promise<void> {
+  const res = await authFetch(`${API_BASE}/api/v1/auth/password/change`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  }, true);
+  if (!res.ok) await handleResponse<never>(res);
 }
 
 // Chức năng: gửi yêu cầu đăng nhập tài khoản.

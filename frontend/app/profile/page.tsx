@@ -3,7 +3,7 @@
 import React, { Suspense, useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   User as UserIcon,
   BookOpen,
@@ -19,7 +19,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useApp, DEFAULT_AVATAR } from "../context/AppContext";
-import { getCurrentUser, uploadAvatar, deleteAvatar, mediaUrl } from "../lib/api";
+import { getCurrentUser, uploadAvatar, deleteAvatar, mediaUrl, changePassword } from "../lib/api";
 import * as auth from "../lib/auth";
 import { User } from "../lib/types";
 import { Input, Textarea } from "../components/ui/Input";
@@ -27,6 +27,7 @@ import { Button } from "../components/ui/Button";
 import { RecipeGrid } from "../components/recipe/RecipeGrid";
 
 function ProfileContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const initialTab = searchParams.get("tab") === "recipes" ? "recipes" : "profile";
 
@@ -40,6 +41,10 @@ function ProfileContent() {
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [isRemovingAvatar, setIsRemovingAvatar] = useState(false);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+  const [hasPassword, setHasPassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [profileError, setProfileError] = useState<{ is404: boolean; message: string } | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const currentUserId = currentUser?.id;
@@ -50,6 +55,7 @@ function ProfileContent() {
     getCurrentUser()
       .then((profile) => {
         if (ignore) return;
+        setHasPassword(profile.hasPassword);
         const mappedUser: User = {
           id: profile.id,
           displayName: profile.displayName,
@@ -204,6 +210,21 @@ function ProfileContent() {
       showToast("error", apiError.message || "Lưu thông tin hồ sơ thất bại.");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsChangingPassword(true);
+    try {
+      await changePassword({ currentPassword, newPassword });
+      auth.clearAuth();
+      router.push("/login");
+    } catch (err: unknown) {
+      const apiError = err as { message?: string };
+      showToast("error", apiError.message || "Đổi mật khẩu thất bại.");
+    } finally {
+      setIsChangingPassword(false);
     }
   };
 
@@ -400,6 +421,7 @@ function ProfileContent() {
 
       {/* Tab 1: Edit Profile */}
       {activeTab === "profile" && (
+        <div className="flex flex-col gap-6">
         <div className="double-bezel max-w-2xl">
           <div className="double-bezel-inner p-6 sm:p-8 flex flex-col gap-6">
             <div className="pb-3 border-b border-[#DCD8D2]/60 dark:border-[#3D3934]">
@@ -493,6 +515,34 @@ function ProfileContent() {
               </div>
             </form>
           </div>
+        </div>
+        {hasPassword && (
+          <div className="double-bezel max-w-2xl">
+            <div className="double-bezel-inner p-6 sm:p-8 flex flex-col gap-6">
+              <div className="pb-3 border-b border-[#DCD8D2]/60 dark:border-[#3D3934]">
+                <h3 className="font-serif text-lg font-bold text-[#463F3A] dark:text-[#F5F3EF]">Đổi mật khẩu</h3>
+              </div>
+              <form onSubmit={handleChangePassword} className="flex flex-col gap-4">
+                <Input
+                  label="Mật khẩu hiện tại"
+                  type="password"
+                  required
+                  value={currentPassword}
+                  onChange={(event) => setCurrentPassword(event.target.value)}
+                />
+                <Input
+                  label="Mật khẩu mới"
+                  type="password"
+                  required
+                  minLength={8}
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                />
+                <Button type="submit" isLoading={isChangingPassword}>Đổi mật khẩu</Button>
+              </form>
+            </div>
+          </div>
+        )}
         </div>
       )}
 

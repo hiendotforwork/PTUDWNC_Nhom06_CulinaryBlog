@@ -25,6 +25,7 @@ export interface UserProfileResponse {
   bio: string | null;
   roles: string[];
   emailConfirmed: boolean;
+  hasPassword: boolean;
   createdAt: string;
 }
 
@@ -136,6 +137,21 @@ export interface ConfirmEmailRequest {
 
 export interface ResendEmailConfirmationRequest {
   email: string;
+}
+
+export interface PasswordResetRequest {
+  email: string;
+}
+
+export interface ResetPasswordRequest {
+  userId: string;
+  token: string;
+  newPassword: string;
+}
+
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
 }
 
 export interface LoginRequest {

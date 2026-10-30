@@ -148,13 +148,12 @@ export default function LoginPage() {
             />
 
             <div className="flex items-center justify-end">
-              <button
-                type="button"
-                onClick={() => showToast("info", "Tính năng đặt lại mật khẩu qua email đang được kích hoạt.")}
+              <Link
+                href="/forgot-password"
                 className="text-xs text-[#C98F7D] hover:underline cursor-pointer"
               >
                 Quên mật khẩu?
-              </button>
+              </Link>
             </div>
 
             <Button
