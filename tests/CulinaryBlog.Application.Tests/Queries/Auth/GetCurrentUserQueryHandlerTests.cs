@@ -40,6 +40,9 @@ public class GetCurrentUserQueryHandlerTests
         _userRepositoryMock
             .Setup(r => r.GetRolesAsync(user))
             .ReturnsAsync(new List<string> { "Author", "Reader" });
+        _userRepositoryMock
+            .Setup(r => r.HasPasswordAsync(user, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
 
         var result = await _handler.Handle(new GetCurrentUserQuery("user-123"), CancellationToken.None);
 
@@ -51,6 +54,7 @@ public class GetCurrentUserQueryHandlerTests
         result.AvatarUrl.Should().Be("https://example.com/avatar.png");
         result.Bio.Should().Be("Culinary enthusiast");
         result.EmailConfirmed.Should().BeTrue();
+        result.HasPassword.Should().BeTrue();
         result.CreatedAt.Should().Be(user.CreatedAt);
         result.Roles.Should().BeEquivalentTo(new[] { "Author", "Reader" });
     }
@@ -75,6 +79,9 @@ public class GetCurrentUserQueryHandlerTests
         _userRepositoryMock
             .Setup(r => r.GetRolesAsync(user))
             .ReturnsAsync(new List<string>());
+        _userRepositoryMock
+            .Setup(r => r.HasPasswordAsync(user, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
 
         var result = await _handler.Handle(new GetCurrentUserQuery("user-123"), CancellationToken.None);
 
@@ -82,6 +89,7 @@ public class GetCurrentUserQueryHandlerTests
         result!.AvatarUrl.Should().BeNull();
         result.Bio.Should().BeNull();
         result.Roles.Should().BeEmpty();
+        result.HasPassword.Should().BeFalse();
     }
 
     [Theory]

@@ -6,12 +6,19 @@ using System.Security.Claims;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text;
 using System.Xml.Linq;
+using CulinaryBlog.Application.Commands.Auth.ChangePassword;
+using CulinaryBlog.Application.Commands.Auth.ResetPassword;
 using CulinaryBlog.API.Services;
 using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Infrastructure.Data;
 using Hangfire;
+using Hangfire.Common;
 using Hangfire.PostgreSql;
+using Hangfire.States;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using Microsoft.AspNetCore.DataProtection;
 using ImageMagick;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
@@ -19,7 +26,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.IdentityModel.Tokens;
+using CulinaryBlog.Infrastructure.Services;
 using Xunit;
+using Moq;
 
 namespace CulinaryBlog.Integration.Tests;
 
@@ -55,12 +64,118 @@ public sealed class JobsObservabilityDatabaseTests
         await db.Database.SqlQueryRaw<BackgroundTaskRow>("""
             SELECT "Id", "Kind", "TargetId", "CompletedAt" FROM culinary."BackgroundTasks"
             """).Where(x => x.Id == id).Select(x => x.CompletedAt != null).SingleAsync();
+
+    [JobsDatabaseFact]
+    public async Task PasswordResetOutboxTaskDispatchesToPasswordResetEmailJob()
+    {
+        await using var db = Database();
+        var id = Guid.NewGuid();
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO culinary."BackgroundTasks" ("Id", "Kind", "TargetId")
+            VALUES ({id}, {"password-reset-email"}, {Guid.NewGuid().ToString("N")})
+            """);
+        var jobs = new Mock<IBackgroundJobClient>();
+        jobs.Setup(client => client.Create(It.Is<Job>(job => job.Type == typeof(PasswordResetEmailJob)), It.IsAny<IState>()))
+            .Returns("test-job");
+
+        await BackgroundTaskDispatcher.DispatchAsync(db, jobs.Object, CancellationToken.None);
+
+        jobs.Verify(client => client.Create(It.Is<Job>(job => job.Type == typeof(PasswordResetEmailJob)), It.IsAny<IState>()), Times.Once);
+        jobs.Verify(client => client.Create(It.Is<Job>(job => job.Type == typeof(ImageResizeJob)), It.IsAny<IState>()), Times.Never);
+    }
     private static async Task<ApplicationUser> User(ApplicationDbContext db)
     {
         var id = Guid.NewGuid().ToString("N");
         var user = new ApplicationUser { Id = id, UserName = "job-" + id, DisplayName = "<Test user>",
             Email = id + "@example.invalid", IsActive = true };
         db.Users.Add(user); await db.SaveChangesAsync(); return user;
+    }
+
+    private static UserManager<ApplicationUser> IdentityUserManager(ApplicationDbContext db)
+    {
+        var options = Microsoft.Extensions.Options.Options.Create(new IdentityOptions());
+        options.Value.Tokens.PasswordResetTokenProvider = TokenOptions.DefaultProvider;
+        var manager = new UserManager<ApplicationUser>(new UserStore<ApplicationUser>(db), options,
+            new PasswordHasher<ApplicationUser>(), [new UserValidator<ApplicationUser>()],
+            [new PasswordValidator<ApplicationUser>()], new UpperInvariantLookupNormalizer(),
+            new IdentityErrorDescriber(), null!, NullLogger<UserManager<ApplicationUser>>.Instance);
+        manager.RegisterTokenProvider(TokenOptions.DefaultProvider, new DataProtectorTokenProvider<ApplicationUser>(
+            new EphemeralDataProtectionProvider(), Microsoft.Extensions.Options.Options.Create(new DataProtectionTokenProviderOptions()),
+            NullLogger<DataProtectorTokenProvider<ApplicationUser>>.Instance));
+        return manager;
+    }
+
+    private sealed class SaveThenFailRefreshTokenRepository(ApplicationDbContext db) : IRefreshTokenRepository
+    {
+        public Task AddAsync(RefreshToken token, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<RefreshToken?> GetByTokenHashAsync(string tokenHash, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public async Task<int> RevokeByUserIdAsync(string userId, CancellationToken cancellationToken = default)
+        {
+            foreach (var token in await db.RefreshTokens.Where(token => token.UserId == userId && token.RevokedAt == null).ToListAsync(cancellationToken))
+                token.Revoke();
+            await db.SaveChangesAsync(cancellationToken);
+            throw new IOException("forced failure after saving refresh revocation");
+        }
+        public Task SaveChangesAsync(CancellationToken cancellationToken = default) => db.SaveChangesAsync(cancellationToken);
+    }
+
+    [JobsDatabaseFact]
+    public async Task PasswordChangeRollsBackPasswordAndRefreshRevocationTogether()
+    {
+        await using var db = Database();
+        var userManager = IdentityUserManager(db);
+        var user = new ApplicationUser
+        {
+            Id = Guid.NewGuid().ToString("N"), Email = "change-" + Guid.NewGuid().ToString("N") + "@example.invalid",
+            UserName = "change-" + Guid.NewGuid().ToString("N"), EmailConfirmed = true
+        };
+        Assert.True((await userManager.CreateAsync(user, "OriginalPass123!")).Succeeded);
+        var refreshToken = RefreshToken.Create(user.Id, Guid.NewGuid().ToString("N"));
+        db.RefreshTokens.Add(refreshToken);
+        await db.SaveChangesAsync();
+        var handler = new ChangePasswordCommandHandler(new UserRepository(userManager),
+            new SaveThenFailRefreshTokenRepository(db), new UnitOfWork(db));
+
+        await Assert.ThrowsAsync<IOException>(() => handler.Handle(
+            new ChangePasswordCommand(user.Id, "OriginalPass123!", "ChangedPass123!"), CancellationToken.None));
+
+        db.ChangeTracker.Clear();
+        var storedUser = await userManager.FindByIdAsync(user.Id);
+        Assert.NotNull(storedUser);
+        Assert.True(await userManager.CheckPasswordAsync(storedUser!, "OriginalPass123!"));
+        Assert.False(await userManager.CheckPasswordAsync(storedUser!, "ChangedPass123!"));
+        var storedRefreshToken = await db.RefreshTokens.AsNoTracking().SingleAsync(token => token.Id == refreshToken.Id);
+        Assert.Null(storedRefreshToken.RevokedAt);
+    }
+
+    [JobsDatabaseFact]
+    public async Task PasswordResetRollsBackPasswordAndRefreshRevocationTogether()
+    {
+        await using var db = Database();
+        var userManager = IdentityUserManager(db);
+        var user = new ApplicationUser
+        {
+            Id = Guid.NewGuid().ToString("N"), Email = "reset-" + Guid.NewGuid().ToString("N") + "@example.invalid",
+            UserName = "reset-" + Guid.NewGuid().ToString("N"), EmailConfirmed = true
+        };
+        Assert.True((await userManager.CreateAsync(user, "OriginalPass123!")).Succeeded);
+        var token = await userManager.GeneratePasswordResetTokenAsync(user);
+        var refreshToken = RefreshToken.Create(user.Id, Guid.NewGuid().ToString("N"));
+        db.RefreshTokens.Add(refreshToken);
+        await db.SaveChangesAsync();
+        var handler = new ResetPasswordCommandHandler(new UserRepository(userManager),
+            new SaveThenFailRefreshTokenRepository(db), new UnitOfWork(db));
+
+        await Assert.ThrowsAsync<IOException>(() => handler.Handle(
+            new ResetPasswordCommand(user.Id, token, "ChangedPass123!"), CancellationToken.None));
+
+        db.ChangeTracker.Clear();
+        var storedUser = await userManager.FindByIdAsync(user.Id);
+        Assert.NotNull(storedUser);
+        Assert.True(await userManager.CheckPasswordAsync(storedUser!, "OriginalPass123!"));
+        Assert.False(await userManager.CheckPasswordAsync(storedUser!, "ChangedPass123!"));
+        var storedRefreshToken = await db.RefreshTokens.AsNoTracking().SingleAsync(value => value.Id == refreshToken.Id);
+        Assert.Null(storedRefreshToken.RevokedAt);
     }
 
     [JobsDatabaseFact]
@@ -427,6 +542,8 @@ public sealed class JobsObservabilityDatabaseTests
         public Task SendWelcomeEmailAsync(string email, string name, CancellationToken ct = default)
         { Calls++; if (Fail) throw new IOException("SMTP unavailable"); return Task.CompletedTask; }
         public Task SendEmailConfirmationAsync(string email, string name, string link, CancellationToken ct = default)
+        { Calls++; if (Fail) throw new IOException("SMTP unavailable"); return Task.CompletedTask; }
+        public Task SendPasswordResetAsync(string email, string name, string link, CancellationToken ct = default)
         { Calls++; if (Fail) throw new IOException("SMTP unavailable"); return Task.CompletedTask; }
     }
     private sealed class ImageReader : IOriginalImageReader

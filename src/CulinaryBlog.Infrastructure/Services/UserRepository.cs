@@ -157,4 +157,19 @@ public class UserRepository : IUserRepository
         var result = await _userManager.ConfirmEmailAsync(user, token);
         return (result.Succeeded, result.Errors.Select(e => e.Description));
     }
+
+    public Task<bool> HasPasswordAsync(ApplicationUser user, CancellationToken cancellationToken = default) =>
+        _userManager.HasPasswordAsync(user);
+
+    public Task<string> GeneratePasswordResetTokenAsync(ApplicationUser user, CancellationToken cancellationToken = default) =>
+        _userManager.GeneratePasswordResetTokenAsync(user);
+
+    public async Task<UserOperationResult> ChangePasswordAsync(ApplicationUser user, string currentPassword, string newPassword, CancellationToken cancellationToken = default) =>
+        ToUserOperationResult(await _userManager.ChangePasswordAsync(user, currentPassword, newPassword));
+
+    public async Task<UserOperationResult> ResetPasswordAsync(ApplicationUser user, string token, string newPassword, CancellationToken cancellationToken = default) =>
+        ToUserOperationResult(await _userManager.ResetPasswordAsync(user, token, newPassword));
+
+    private static UserOperationResult ToUserOperationResult(IdentityResult result) =>
+        new(result.Succeeded, result.Errors.Select(error => new UserOperationError(error.Code, error.Description)).ToArray());
 }

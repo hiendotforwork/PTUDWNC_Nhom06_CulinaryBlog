@@ -9,5 +9,6 @@ public record UserProfileDto(
     string? Bio,
     string[] Roles,
     bool EmailConfirmed,
+    bool HasPassword,
     DateTime CreatedAt
 );

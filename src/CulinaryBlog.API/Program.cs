@@ -93,10 +93,12 @@ builder.Services.AddScoped<IEmailService, EmailService>();
 if (isTesting)
 {
     builder.Services.AddSingleton<IEmailConfirmationResendLimiter, InMemoryEmailConfirmationResendLimiter>();
+    builder.Services.AddSingleton<IPasswordResetRequestLimiter, InMemoryPasswordResetRequestLimiter>();
 }
 else
 {
     builder.Services.AddSingleton<IEmailConfirmationResendLimiter, EmailConfirmationResendLimiter>();
+    builder.Services.AddSingleton<IPasswordResetRequestLimiter, PasswordResetRequestLimiter>();
 }
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<IRecipeRepository, RecipeRepository>();
@@ -209,6 +211,11 @@ builder.Services.AddRateLimiter(options =>
         RateLimitPartition.GetFixedWindowLimiter(
             context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
             _ => new FixedWindowRateLimiterOptions { PermitLimit = resendPermitLimit, Window = TimeSpan.FromMinutes(1) }));
+    var passwordResetPermitLimit = builder.Configuration.GetValue<int?>("RateLimits:PasswordResetPermitLimit") ?? (isTesting ? 1000 : 5);
+    options.AddPolicy("PasswordResetRateLimit", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
+            _ => new FixedWindowRateLimiterOptions { PermitLimit = passwordResetPermitLimit, Window = TimeSpan.FromMinutes(1) }));
 });
 
 builder.Services.AddControllers().ConfigureApiBehaviorOptions(options =>

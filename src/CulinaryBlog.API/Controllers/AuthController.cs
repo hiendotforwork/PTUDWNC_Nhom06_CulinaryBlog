@@ -6,6 +6,9 @@ using CulinaryBlog.Application.Commands.Auth.Logout;
 using CulinaryBlog.Application.Commands.Auth.RefreshToken;
 using CulinaryBlog.Application.Commands.Auth.ConfirmEmail;
 using CulinaryBlog.Application.Commands.Auth.ResendEmailConfirmation;
+using CulinaryBlog.Application.Commands.Auth.ChangePassword;
+using CulinaryBlog.Application.Commands.Auth.ForgotPassword;
+using CulinaryBlog.Application.Commands.Auth.ResetPassword;
 using CulinaryBlog.Application.DTOs.Auth;
 using CulinaryBlog.Application.Commands.Auth.GoogleLogin;
 using CulinaryBlog.Application.Commands.Auth.UpdateProfile;
@@ -31,6 +34,9 @@ public class AuthController : ControllerBase
     private readonly IValidator<UpdateProfileCommand>? _updateProfileValidator;
     private readonly IValidator<ConfirmEmailCommand>? _confirmEmailValidator;
     private readonly IValidator<ResendEmailConfirmationCommand>? _resendEmailValidator;
+    private readonly IValidator<ChangePasswordCommand>? _changePasswordValidator;
+    private readonly IValidator<ForgotPasswordCommand>? _forgotPasswordValidator;
+    private readonly IValidator<ResetPasswordCommand>? _resetPasswordValidator;
     private readonly IConfiguration _configuration;
 
     public AuthController(
@@ -41,7 +47,10 @@ public class AuthController : ControllerBase
         IValidator<RefreshTokenCommand>? refreshValidator = null,
         IValidator<UpdateProfileCommand>? updateProfileValidator = null,
         IValidator<ConfirmEmailCommand>? confirmEmailValidator = null,
-        IValidator<ResendEmailConfirmationCommand>? resendEmailValidator = null)
+        IValidator<ResendEmailConfirmationCommand>? resendEmailValidator = null,
+        IValidator<ChangePasswordCommand>? changePasswordValidator = null,
+        IValidator<ForgotPasswordCommand>? forgotPasswordValidator = null,
+        IValidator<ResetPasswordCommand>? resetPasswordValidator = null)
     {
         _mediator = mediator;
         _registerValidator = registerValidator;
@@ -51,6 +60,9 @@ public class AuthController : ControllerBase
         _updateProfileValidator = updateProfileValidator;
         _confirmEmailValidator = confirmEmailValidator;
         _resendEmailValidator = resendEmailValidator;
+        _changePasswordValidator = changePasswordValidator;
+        _forgotPasswordValidator = forgotPasswordValidator;
+        _resetPasswordValidator = resetPasswordValidator;
     }
 
     [HttpPost("register")]
@@ -343,5 +355,68 @@ public class AuthController : ControllerBase
 
         var profile = await _mediator.Send(command, cancellationToken);
         return Ok(profile);
+    }
+
+    [HttpPost("password/change")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request, CancellationToken cancellationToken)
+    {
+        var nameIdentifier = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var sub = User.FindFirstValue(JwtRegisteredClaimNames.Sub) ?? User.FindFirst("sub")?.Value;
+        var userId = !string.IsNullOrWhiteSpace(nameIdentifier) ? nameIdentifier.Trim()
+            : !string.IsNullOrWhiteSpace(sub) ? sub.Trim()
+            : null;
+        if (string.IsNullOrWhiteSpace(userId)) return Unauthorized();
+
+        var command = new ChangePasswordCommand(userId, request.CurrentPassword, request.NewPassword);
+        if (_changePasswordValidator is not null)
+        {
+            var validation = await _changePasswordValidator.ValidateAsync(command, cancellationToken);
+            if (!validation.IsValid) throw new ValidationException(validation.Errors);
+        }
+
+        await _mediator.Send(command, cancellationToken);
+        return NoContent();
+    }
+
+    [HttpPost("password/forgot")]
+    [AllowAnonymous]
+    [EnableRateLimiting("PasswordResetRateLimit")]
+    [ProducesResponseType(typeof(PasswordResetRequestAcceptedResponse), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request, CancellationToken cancellationToken)
+    {
+        var command = new ForgotPasswordCommand(request.Email);
+        if (_forgotPasswordValidator is not null)
+        {
+            var validation = await _forgotPasswordValidator.ValidateAsync(command, cancellationToken);
+            if (!validation.IsValid) throw new ValidationException(validation.Errors);
+        }
+
+        await _mediator.Send(command, cancellationToken);
+        return Accepted(new PasswordResetRequestAcceptedResponse(
+            "Nếu email này thuộc tài khoản hợp lệ, hướng dẫn đặt lại mật khẩu sẽ được gửi."));
+    }
+
+    [HttpPost("password/reset")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request, CancellationToken cancellationToken)
+    {
+        var command = new ResetPasswordCommand(request.UserId, request.Token, request.NewPassword);
+        if (_resetPasswordValidator is not null)
+        {
+            var validation = await _resetPasswordValidator.ValidateAsync(command, cancellationToken);
+            if (!validation.IsValid) throw new ValidationException(validation.Errors);
+        }
+
+        await _mediator.Send(command, cancellationToken);
+        return NoContent();
     }
 }

@@ -24,7 +24,6 @@ public sealed class BackgroundTaskQueueTests
     [Fact]
     public async Task TwoVerificationRequestsForSameUser_CreateTwoPendingTasks()
     {
-        BackgroundTaskExecution.InMemoryTasks.Clear();
         using var db = CreateInMemoryDbContext();
         var queue = new DatabaseBackgroundTaskQueue(db);
         var userId = Guid.NewGuid().ToString("N");
@@ -43,7 +42,6 @@ public sealed class BackgroundTaskQueueTests
     [Fact]
     public async Task DuplicateWelcomeAndResizeRequests_RemainDeduplicated()
     {
-        BackgroundTaskExecution.InMemoryTasks.Clear();
         using var db = CreateInMemoryDbContext();
         var queue = new DatabaseBackgroundTaskQueue(db);
         var userId = Guid.NewGuid().ToString("N");
@@ -66,5 +64,20 @@ public sealed class BackgroundTaskQueueTests
             .Where(t => t.Kind == "resize" && t.TargetId == imageId.ToString())
             .ToList();
         Assert.Single(resizeTasks);
+    }
+
+    [Fact]
+    public async Task PasswordResetRequestCreatesOutboxTaskWithOnlyUserId()
+    {
+        using var db = CreateInMemoryDbContext();
+        var queue = new DatabaseBackgroundTaskQueue(db);
+        var userId = Guid.NewGuid().ToString("N");
+
+        await queue.PasswordResetEmailAsync(userId, CancellationToken.None);
+
+        var task = Assert.Single(BackgroundTaskExecution.InMemoryTasks.Values,
+            t => t.Kind == "password-reset-email" && t.TargetId == userId);
+        Assert.Equal("password-reset-email", task.Kind);
+        Assert.Equal(userId, task.TargetId);
     }
 }

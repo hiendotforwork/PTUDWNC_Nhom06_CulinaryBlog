@@ -52,4 +52,26 @@ public sealed class EmailService(IConfiguration configuration, ILogger<EmailServ
         await smtp.SendMailAsync(message, cancellationToken);
         logger.LogInformation("Confirmation email delivered to recipient");
     }
+
+    public async Task SendPasswordResetAsync(string email, string displayName, string link, CancellationToken cancellationToken = default)
+    {
+        var host = configuration["Email:SmtpHost"];
+        if (string.IsNullOrWhiteSpace(host)) throw new InvalidOperationException("Configure Email:SmtpHost before sending email.");
+        using var message = new MailMessage(configuration["Email:From"] ?? "noreply@culinary.local", email) {
+            Subject = "Đặt lại mật khẩu - Culinary Blog",
+            IsBodyHtml = true,
+            Body = $"<h1>Xin chào {WebUtility.HtmlEncode(displayName)}!</h1>" +
+                $"<p>Nhấn vào liên kết bên dưới để đặt lại mật khẩu:</p>" +
+                $"<p><a href=\"{WebUtility.HtmlEncode(link)}\">Đặt lại mật khẩu</a></p>" +
+                "<p>Nếu bạn không yêu cầu thao tác này, hãy bỏ qua email.</p>"
+        };
+        using var smtp = new SmtpClient(host, configuration.GetValue("Email:SmtpPort", 25)) {
+            EnableSsl = configuration.GetValue("Email:UseSsl", false),
+            Timeout = 15000
+        };
+        var user = configuration["Email:UserName"];
+        if (!string.IsNullOrWhiteSpace(user)) smtp.Credentials = new NetworkCredential(user, configuration["Email:Password"]);
+        await smtp.SendMailAsync(message, cancellationToken);
+        logger.LogInformation("Password reset email delivered to recipient");
+    }
 }

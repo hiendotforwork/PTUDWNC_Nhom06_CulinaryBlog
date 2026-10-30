@@ -17,6 +17,7 @@ public sealed class DatabaseBackgroundTaskQueue(ApplicationDbContext db) : IBack
     public Task WelcomeAsync(string userId, CancellationToken ct) => AddAsync("welcome", userId, ct);
     public Task ResizeAsync(Guid imageId, CancellationToken ct) => AddAsync("resize", imageId.ToString(), ct);
     public Task EmailConfirmationAsync(string userId, CancellationToken ct) => AddAsync("email-verification", userId, ct);
+    public Task PasswordResetEmailAsync(string userId, CancellationToken ct) => AddAsync("password-reset-email", userId, ct);
     private Task AddAsync(string kind, string target, CancellationToken ct)
     {
         if (!db.Database.IsRelational())
@@ -48,6 +49,7 @@ public sealed class NoBackgroundTaskQueue : IBackgroundTaskQueue
     public Task WelcomeAsync(string userId, CancellationToken ct) => Task.CompletedTask;
     public Task ResizeAsync(Guid imageId, CancellationToken ct) => Task.CompletedTask;
     public Task EmailConfirmationAsync(string userId, CancellationToken ct) => Task.CompletedTask;
+    public Task PasswordResetEmailAsync(string userId, CancellationToken ct) => Task.CompletedTask;
 }
 
 // Outbox and business records commit together. Dispatch may repeat after a crash;
@@ -85,6 +87,8 @@ public sealed class BackgroundTaskDispatcher(IServiceScopeFactory scopes, ILogge
                 jobs.Enqueue<WelcomeEmailJob>(job => job.RunAsync(task.Id, CancellationToken.None));
             else if (task.Kind == "email-verification")
                 jobs.Enqueue<EmailVerificationJob>(job => job.RunAsync(task.Id, CancellationToken.None));
+            else if (task.Kind == "password-reset-email")
+                jobs.Enqueue<PasswordResetEmailJob>(job => job.RunAsync(task.Id, CancellationToken.None));
             else
                 jobs.Enqueue<ImageResizeJob>(job => job.RunAsync(task.Id, CancellationToken.None));
             await db.Database.ExecuteSqlInterpolatedAsync($"""

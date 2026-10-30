@@ -43,6 +43,9 @@ public class AuthException : Exception
     public static AuthException InvalidConfirmationToken() =>
         new("EMAIL_CONFIRMATION_FAILED", "Mã xác nhận không hợp lệ hoặc đã hết hạn.", 400);
 
+    public static AuthException InvalidPasswordResetToken() =>
+        new("AUTH_PASSWORD_RESET_INVALID", "Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn.", 400);
+
     public static AuthException EmailAlreadyConfirmed() =>
         new("EMAIL_ALREADY_CONFIRMED", "Địa chỉ email đã được xác nhận trước đó.", 409);
 

@@ -6,4 +6,5 @@ public interface IBackgroundTaskQueue
     Task WelcomeAsync(string userId, CancellationToken ct);
     Task ResizeAsync(Guid imageId, CancellationToken ct);
     Task EmailConfirmationAsync(string userId, CancellationToken ct);
+    Task PasswordResetEmailAsync(string userId, CancellationToken ct);
 }

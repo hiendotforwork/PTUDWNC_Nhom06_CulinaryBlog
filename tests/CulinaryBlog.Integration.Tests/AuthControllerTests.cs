@@ -42,6 +42,129 @@ public class AuthControllerTests : IClassFixture<CustomWebApplicationFactory>
         );
     }
 
+    private async Task<(ApplicationUser User, AuthResponse Tokens)> CreateConfirmedUserAndLoginAsync()
+    {
+        var user = new ApplicationUser
+        {
+            Id = Guid.NewGuid().ToString("N"), Email = $"password_{Guid.NewGuid():N}@culinaryblog.vn",
+            UserName = $"password_{Guid.NewGuid():N}", DisplayName = "Password Chef", EmailConfirmed = true
+        };
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            (await userManager.CreateAsync(user, "Password123!")).Succeeded.Should().BeTrue();
+        }
+        var response = await _client.PostAsJsonAsync("/api/v1/auth/login", new { email = user.Email, password = "Password123!" });
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        return (user, (await response.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions))!);
+    }
+
+    [Fact]
+    public async Task ChangePassword_RequiresAuthentication()
+    {
+        using var response = await _client.PostAsJsonAsync("/api/v1/auth/password/change", new
+        {
+            currentPassword = "Password123!", newPassword = "NewPassword123!"
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task ChangePassword_UpdatesPasswordAndRevokesRefreshSession()
+    {
+        var (user, tokens) = await CreateConfirmedUserAndLoginAsync();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/password/change")
+        {
+            Content = JsonContent.Create(new { currentPassword = "Password123!", newPassword = "NewPassword123!" })
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", tokens.AccessToken);
+
+        using var response = await _client.SendAsync(request);
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await _client.PostAsJsonAsync("/api/v1/auth/refresh", new { refreshToken = tokens.RefreshToken }))
+            .StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        (await _client.PostAsJsonAsync("/api/v1/auth/login", new { email = user.Email, password = "Password123!" }))
+            .StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        (await _client.PostAsJsonAsync("/api/v1/auth/login", new { email = user.Email, password = "NewPassword123!" }))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task ForgotPassword_ReturnsSameAcceptedResponseForKnownAndUnknownEmails()
+    {
+        var (user, _) = await CreateConfirmedUserAndLoginAsync();
+        using var known = await _client.PostAsJsonAsync("/api/v1/auth/password/forgot", new { email = user.Email });
+        using var unknown = await _client.PostAsJsonAsync("/api/v1/auth/password/forgot", new { email = $"missing_{Guid.NewGuid():N}@culinaryblog.vn" });
+
+        known.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        unknown.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        (await known.Content.ReadAsStringAsync()).Should().Be(await unknown.Content.ReadAsStringAsync());
+        (await known.Content.ReadAsStringAsync()).Should().Contain("Nếu email này thuộc tài khoản hợp lệ");
+    }
+
+    [Fact]
+    public async Task ResetPassword_InvalidLinkReturnsGenericInvalidLinkError()
+    {
+        using var response = await _client.PostAsJsonAsync("/api/v1/auth/password/reset", new
+        {
+            userId = "missing-user", token = "invalid", newPassword = "NewPassword123!"
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("AUTH_PASSWORD_RESET_INVALID");
+    }
+
+    [Fact]
+    public async Task ResetPassword_InvalidTokenForExistingUserReturnsSameGenericError()
+    {
+        var (user, _) = await CreateConfirmedUserAndLoginAsync();
+        using var response = await _client.PostAsJsonAsync("/api/v1/auth/password/reset", new
+        {
+            userId = user.Id, token = "invalid", newPassword = "NewPassword123!"
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("AUTH_PASSWORD_RESET_INVALID");
+    }
+
+    [Fact]
+    public async Task ResetPassword_ChangesPasswordAndOldPasswordNoLongerWorks()
+    {
+        var (user, _) = await CreateConfirmedUserAndLoginAsync();
+        string token;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            token = await userManager.GeneratePasswordResetTokenAsync(user);
+        }
+
+        using var response = await _client.PostAsJsonAsync("/api/v1/auth/password/reset", new
+        {
+            userId = user.Id, token, newPassword = "ResetPassword123!"
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await _client.PostAsJsonAsync("/api/v1/auth/login", new { email = user.Email, password = "Password123!" }))
+            .StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        (await _client.PostAsJsonAsync("/api/v1/auth/login", new { email = user.Email, password = "ResetPassword123!" }))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task ForgotPassword_EndpointRateLimitReturns429AfterConfiguredLimit()
+    {
+        using var factory = new CustomWebApplicationFactory { PasswordResetPermitLimit = 2 };
+        using var client = factory.CreateClient();
+        using var first = await client.PostAsJsonAsync("/api/v1/auth/password/forgot", new { email = "one@example.com" });
+        using var second = await client.PostAsJsonAsync("/api/v1/auth/password/forgot", new { email = "two@example.com" });
+        using var third = await client.PostAsJsonAsync("/api/v1/auth/password/forgot", new { email = "three@example.com" });
+
+        first.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        second.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        third.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+    }
+
     [Fact]
     public async Task Register_WithValidData_Returns201CreatedWithRegistrationPendingResponse()
     {

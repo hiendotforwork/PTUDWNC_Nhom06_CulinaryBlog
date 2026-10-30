@@ -41,6 +41,8 @@ public sealed class EmailVerificationJobTests
             LastLink = link;
             return Task.CompletedTask;
         }
+
+        public Task SendPasswordResetAsync(string email, string displayName, string link, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
     private sealed class TestHostEnvironment(string environmentName) : IWebHostEnvironment
