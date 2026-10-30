@@ -11,7 +11,6 @@ using CulinaryBlog.Application.Recipes.Validation;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using System.Threading.RateLimiting;
 using CulinaryBlog.API.Middleware;
 using CulinaryBlog.API.Services;
 using CulinaryBlog.Application.Commands.Auth.Register;
@@ -31,6 +30,7 @@ using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
 using AuthApplicationUser = CulinaryBlog.Domain.Entities.ApplicationUser;
@@ -189,7 +189,7 @@ builder.Services.AddAuthentication(options =>
 });
 
 builder.Services.AddAuthorization();
-var defaultPermitLimit = isTesting ? 1000 : 10;
+builder.Services.AddSingleton<IConfigureOptions<Microsoft.AspNetCore.RateLimiting.RateLimiterOptions>, AuthRateLimiterOptions>();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
