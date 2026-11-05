@@ -247,28 +247,9 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization();
 builder.Services.AddSingleton<IConfigureOptions<Microsoft.AspNetCore.RateLimiting.RateLimiterOptions>, AuthRateLimiterOptions>();
-var defaultPermitLimit = isTesting ? 1000 : 10;
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.AddPolicy("RegisterRateLimit", context =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
-            _ => new FixedWindowRateLimiterOptions { PermitLimit = defaultPermitLimit, Window = TimeSpan.FromMinutes(1) }));
-    options.AddPolicy("LoginRateLimit", context =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
-            _ => new FixedWindowRateLimiterOptions { PermitLimit = defaultPermitLimit, Window = TimeSpan.FromMinutes(1) }));
-    var refreshPermitLimit = isTesting ? 1000 : 30;
-    options.AddPolicy("RefreshRateLimit", context =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
-            _ => new FixedWindowRateLimiterOptions { PermitLimit = refreshPermitLimit, Window = TimeSpan.FromMinutes(1) }));
-    var resendPermitLimit = isTesting ? 1000 : 5;
-    options.AddPolicy("ResendEmailRateLimit", context =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
-            _ => new FixedWindowRateLimiterOptions { PermitLimit = resendPermitLimit, Window = TimeSpan.FromMinutes(1) }));
     var passwordResetPermitLimit = builder.Configuration.GetValue<int?>("RateLimits:PasswordResetPermitLimit") ?? (isTesting ? 1000 : 5);
     options.AddPolicy("PasswordResetRateLimit", context =>
         RateLimitPartition.GetFixedWindowLimiter(
