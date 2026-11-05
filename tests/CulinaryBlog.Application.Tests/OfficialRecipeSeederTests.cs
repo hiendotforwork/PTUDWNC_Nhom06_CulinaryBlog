@@ -40,6 +40,38 @@ public sealed class OfficialRecipeSeederTests
     }
 
     [Fact]
+    public async Task SyncUsesImageSignatureWhenFileExtensionIsWrong()
+    {
+        using var files = new RecipeFiles();
+        File.WriteAllBytes(files.ImagePath, [137, 80, 78, 71, 13, 10, 26, 10]);
+        await using var db = CreateContext();
+        var storage = new RecordingStorage();
+
+        await OfficialRecipeSeeder.SyncAsync(db, storage, Dataset(files, Recipe(1)));
+
+        Assert.Equal(("image/png", ".png"), Assert.Single(storage.UploadedTypes));
+    }
+
+    [Fact]
+    public async Task SyncRejectsInvalidImageBeforeUploadingAnyRecipe()
+    {
+        using var validImage = new RecipeFiles();
+        using var invalidImage = new RecipeFiles();
+        File.WriteAllBytes(invalidImage.ImagePath, [1, 2, 3]);
+        await using var db = CreateContext();
+        var storage = new RecordingStorage();
+        var dataset = new OfficialRecipeDataset([
+            Recipe(1) with { ImagePath = validImage.ImagePath },
+            Recipe(2, "Cá kho tộ", "Mì") with { ImagePath = invalidImage.ImagePath }
+        ]);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => OfficialRecipeSeeder.SyncAsync(db, storage, dataset));
+
+        Assert.Empty(storage.UploadedUrls);
+        Assert.Empty(await db.Recipes.IgnoreQueryFilters().ToListAsync());
+    }
+
+    [Fact]
     public async Task SyncIsIdempotentAndPreservesPublishedAt()
     {
         using var files = new RecipeFiles();
@@ -183,7 +215,7 @@ public sealed class OfficialRecipeSeederTests
     private sealed class RecipeFiles : IDisposable
     {
         public string ImagePath { get; } = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".jpg");
-        public RecipeFiles() => File.WriteAllBytes(ImagePath, [1]);
+        public RecipeFiles() => File.WriteAllBytes(ImagePath, [255, 216, 255]);
         public void Dispose() => File.Delete(ImagePath);
     }
 
@@ -191,11 +223,13 @@ public sealed class OfficialRecipeSeederTests
     {
         public List<string> UploadedUrls { get; } = [];
         public List<string> DeletedUrls { get; } = [];
+        public List<(string ContentType, string Extension)> UploadedTypes { get; } = [];
         public int? FailOnUploadNumber { get; init; }
 
         public async Task<StoredFile> UploadAsync(Stream stream, string contentType, string extension, string folder, CancellationToken cancellationToken)
         {
             await stream.CopyToAsync(Stream.Null, cancellationToken);
+            UploadedTypes.Add((contentType, extension));
             if (FailOnUploadNumber == UploadedUrls.Count + 1)
                 throw new IOException("simulated upload failure");
             var url = $"https://minio.local/recipes/{Guid.NewGuid():N}.jpg";

@@ -1,4 +1,4 @@
--- Local Docker database only. Run after Docker migrations and Lab2Seeder.
+-- Local Docker database only. Run after migrations and the official recipe sync.
 -- Repeatable: stable IDs and ON CONFLICT preserve existing records.
 BEGIN;
 DO $$
@@ -6,8 +6,9 @@ BEGIN
     IF current_database() <> 'culinary_blog' THEN
         RAISE EXCEPTION 'This seed requires the local culinary_blog database';
     END IF;
-    IF NOT EXISTS (SELECT 1 FROM culinary."AspNetUsers" WHERE "Id" = 'lab2-chuong-demo-author') THEN
-        RAISE EXCEPTION 'Run the existing Lab 2 seed first';
+    IF NOT EXISTS (SELECT 1 FROM culinary."AspNetUsers" WHERE "Id" = 'official-recipe-dataset')
+       OR NOT EXISTS (SELECT 1 FROM culinary."Recipes" WHERE "AuthorId" = 'official-recipe-dataset' AND NOT "IsDeleted") THEN
+        RAISE EXCEPTION 'Run the official recipe sync first';
     END IF;
 END $$;
 WITH samples AS (
@@ -30,8 +31,8 @@ SELECT md5('fr-srch-demo-' || i)::uuid,
     5 + (i % 6) * 5, 10 + (i % 8) * 10, 1 + (i % 6),
     1 + (i % 3), status,
     CASE WHEN status = 1 THEN timestamptz '2026-10-01 08:00:00+07' - i * interval '1 day' ELSE NULL END,
-    (SELECT "Id" FROM culinary."Categories" WHERE "Slug" = 'lab2-chuong-category-' || (i % 20)),
-    'lab2-chuong-demo-author', timestamptz '2026-10-01 08:00:00+07' - i * interval '1 day',
+    (SELECT "CategoryId" FROM culinary."Recipes" WHERE "AuthorId" = 'official-recipe-dataset' AND NOT "IsDeleted" ORDER BY "Id" LIMIT 1),
+    'official-recipe-dataset', timestamptz '2026-10-01 08:00:00+07' - i * interval '1 day',
     false, decode(md5('fr-srch-demo-version-' || i), 'hex')
 FROM samples
 ON CONFLICT ("Id") DO NOTHING;

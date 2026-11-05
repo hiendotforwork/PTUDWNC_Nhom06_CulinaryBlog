@@ -64,7 +64,6 @@ services:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__DefaultConnection: Host=postgres;Database=culinary_jobs_tests;Username=culinary;Password=culinary_jobs_test_password
       Database__AutoMigrate: "true"
-      Database__SeedLab2: "true"
       Redis__Connection: redis:6379
       FileStorage__Provider: Minio
       MinIO__Endpoint: minio:9000

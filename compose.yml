@@ -58,7 +58,6 @@ services:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=culinary_blog;Username=culinary;Password=${POSTGRES_PASSWORD:-culinary_dev_password}
       Database__AutoMigrate: "true"
-      Database__SeedLab2: "true"
       Jwt__Secret: ${JWT_SECRET:-CulinaryBlogDockerDevelopmentSecretKey2026AtLeast32Characters}
       Jwt__Issuer: CulinaryBlog
       Jwt__Audience: CulinaryBlogApp

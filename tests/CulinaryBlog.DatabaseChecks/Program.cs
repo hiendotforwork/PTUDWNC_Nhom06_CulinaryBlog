@@ -1,11 +1,7 @@
-// Tệp này là chương trình kiểm tra nhanh schema và dữ liệu mẫu Recipe của Lab 2.
-// Chức năng: kết nối PostgreSQL, kiểm tra bảng/migration và xác minh số lượng bằng Lab2Seeder.VerifyAsync.
-// Input: DefaultConnection từ cấu hình. Output: kết quả kiểm tra trên console và mã thoát tiến trình.
-
-using Microsoft.EntityFrameworkCore.Storage;
-using CulinaryBlog.Infrastructure.Persistence;
 using CulinaryBlog.Infrastructure.Data;
+using CulinaryBlog.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
 
 var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection")
@@ -16,8 +12,22 @@ if (cs.Host is not ("127.0.0.1" or "localhost") || cs.Database != "culinary_lab2
     throw new InvalidOperationException("Checks are restricted to local culinary_lab2.");
 var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(connectionString).Options;
 await using var db = new ApplicationDbContext(options);
-Console.WriteLine(await Lab2Seeder.VerifyAsync(db));
-var sampleId = await db.Recipes.Where(x => x.Slug.StartsWith("lab2-chuong-")).Select(x => x.Id).FirstAsync();
+Console.WriteLine(await OfficialRecipeSeeder.VerifyAsync(db));
+var legacyRecipeIds = await db.Recipes.IgnoreQueryFilters().Where(x => x.Slug.StartsWith("lab2-chuong-"))
+    .Select(x => x.Id).ToArrayAsync();
+var legacyCategoryIds = await db.Categories.IgnoreQueryFilters().Where(x => x.Slug.StartsWith("lab2-chuong-"))
+    .Select(x => x.Id).ToArrayAsync();
+if (await db.Recipes.AnyAsync(x => x.Slug.StartsWith("lab2-chuong-"))
+    || await db.Categories.AnyAsync(x => x.Slug.StartsWith("lab2-chuong-"))
+    || await db.RecipeIngredients.IgnoreQueryFilters().AnyAsync(x => legacyRecipeIds.Contains(x.RecipeId) && !x.IsDeleted)
+    || await db.RecipeSteps.IgnoreQueryFilters().AnyAsync(x => legacyRecipeIds.Contains(x.RecipeId) && !x.IsDeleted)
+    || await db.Categories.IgnoreQueryFilters().AnyAsync(x => legacyCategoryIds.Contains(x.Id) && !x.IsDeleted))
+    throw new InvalidOperationException("Legacy Lab 2 recipes, categories, or children remain active.");
+var sampleId = await db.Recipes.Where(x => x.AuthorId == OfficialRecipeSeeder.SeedAuthorId)
+    .Where(recipe => db.RecipeSteps.Count(step => step.RecipeId == recipe.Id) >= 2)
+    .Select(x => x.Id).FirstAsync();
+var secondRecipeId = await db.Recipes.Where(x => x.AuthorId == OfficialRecipeSeeder.SeedAuthorId && x.Id != sampleId)
+    .Select(x => x.Id).FirstAsync();
 
 await using (var connection = new NpgsqlConnection(connectionString))
 {
@@ -45,35 +55,45 @@ await using (var connection = new NpgsqlConnection(connectionString))
     await tx.RollbackAsync();
 }
 
-async Task ExpectConstraint(string name, string sql, string state)
+async Task ExpectConstraint(string name, string sql, string state, params NpgsqlParameter[] parameters)
 {
     await using var connection = new NpgsqlConnection(connectionString);
     await connection.OpenAsync();
     await using var tx = await connection.BeginTransactionAsync();
     var rejected = false;
-    try { await new NpgsqlCommand(sql, connection, tx).ExecuteNonQueryAsync(); }
+    try
+    {
+        await using var command = new NpgsqlCommand(sql, connection, tx);
+        command.Parameters.AddRange(parameters);
+        await command.ExecuteNonQueryAsync();
+    }
     catch (PostgresException ex) when (ex.SqlState == state) { rejected = true; }
     await tx.RollbackAsync();
     if (!rejected) throw new Exception("Missing constraint: " + name);
     Console.WriteLine("PASS: " + name);
 }
 
-await ExpectConstraint("negative cooking time", "UPDATE culinary.\"Recipes\" SET \"CookTime\"=-1 WHERE \"Slug\"='lab2-chuong-recipe-001'", "23514");
-await ExpectConstraint("quantity without unit", "UPDATE culinary.\"RecipeIngredients\" SET \"Quantity\"=1, \"Unit\"=NULL WHERE \"RecipeId\"=(SELECT \"Id\" FROM culinary.\"Recipes\" WHERE \"Slug\"='lab2-chuong-recipe-001')", "23514");
-await ExpectConstraint("duplicate slug", "UPDATE culinary.\"Recipes\" SET \"Slug\"='lab2-chuong-recipe-001' WHERE \"Slug\"='lab2-chuong-recipe-002'", "23505");
-await ExpectConstraint("duplicate step number", "UPDATE culinary.\"RecipeSteps\" SET \"StepNumber\"=1 WHERE \"StepNumber\"=2 AND \"RecipeId\"=(SELECT \"Id\" FROM culinary.\"Recipes\" WHERE \"Slug\"='lab2-chuong-recipe-001')", "23505");
-await ExpectConstraint("two primary images", """
+await ExpectConstraint("negative cooking time",
+    "UPDATE culinary.\"Recipes\" SET \"CookTime\"=-1 WHERE \"Id\"=@id", "23514", new NpgsqlParameter("id", sampleId));
+await ExpectConstraint("quantity without unit",
+    "UPDATE culinary.\"RecipeIngredients\" SET \"Quantity\"=1, \"Unit\"=NULL WHERE \"RecipeId\"=@id", "23514", new NpgsqlParameter("id", sampleId));
+await ExpectConstraint("duplicate slug",
+    "UPDATE culinary.\"Recipes\" SET \"Slug\"=(SELECT \"Slug\" FROM culinary.\"Recipes\" WHERE \"Id\"=@sample) WHERE \"Id\"=@other",
+    "23505", new NpgsqlParameter("sample", sampleId), new NpgsqlParameter("other", secondRecipeId));
+await ExpectConstraint("duplicate step number",
+    "UPDATE culinary.\"RecipeSteps\" SET \"StepNumber\"=1 WHERE \"StepNumber\"=2 AND \"RecipeId\"=@id",
+    "23505", new NpgsqlParameter("id", sampleId));
+await ExpectConstraint("second primary image", """
     INSERT INTO culinary."RecipeImages" ("Id", "RecipeId", "OriginalUrl", "IsPrimary", "OrderIndex", "CreatedAt", "IsDeleted", "RowVersion")
-    SELECT gen_random_uuid(), r."Id", 'https://example.invalid/test-' || s.n, true, s.n, now(), false, decode(repeat('00',16),'hex')
-    FROM culinary."Recipes" r CROSS JOIN generate_series(1,2) s(n) WHERE r."Slug"='lab2-chuong-recipe-001';
-    """, "23505");
+    VALUES (gen_random_uuid(), @id, 'https://example.invalid/test-image', true, 1, now(), false, decode(repeat('00',16),'hex'));
+    """, "23505", new NpgsqlParameter("id", sampleId));
 await using (var connection = new NpgsqlConnection(connectionString))
 {
     await connection.OpenAsync();
     var matches = (bool)(await new NpgsqlCommand("SELECT to_tsvector('culinary.vietnamese','Phở bò') @@ plainto_tsquery('culinary.vietnamese','pho bo')", connection).ExecuteScalarAsync())!;
     if (!matches) throw new Exception("Unaccent search failed.");
     var indexed = (long)(await new NpgsqlCommand("SELECT count(*) FROM culinary.\"Recipes\" WHERE \"SearchVector\" IS NOT NULL", connection).ExecuteScalarAsync())!;
-    if (indexed < 100) throw new Exception("Search trigger did not index seed data.");
+    if (indexed < 100) throw new Exception("Search trigger did not index the official dataset.");
     Console.WriteLine("PASS: Vietnamese unaccent search and insert trigger");
 }
 Console.WriteLine("All database checks passed; test mutations rolled back.");

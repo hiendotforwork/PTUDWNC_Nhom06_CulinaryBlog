@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using CulinaryBlog.Application.Files;
 using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Domain.Enums;
@@ -29,20 +30,20 @@ public static class OfficialRecipeSeeder
 
         var uploadedUrls = new List<string>();
         var newImageUrls = new Dictionary<int, string>();
+        var imageTypes = new Dictionary<int, (string Mime, string Extension)>();
         var oldImageUrls = new HashSet<string>(StringComparer.Ordinal);
         try
         {
             foreach (var recipe in dataset.Recipes)
             {
-                var extension = Path.GetExtension(recipe.ImagePath).ToLowerInvariant();
-                var contentType = extension switch
-                {
-                    ".jpg" or ".jpeg" => "image/jpeg",
-                    ".png" => "image/png",
-                    ".webp" => "image/webp",
-                    ".avif" => "image/avif",
-                    _ => throw new InvalidDataException($"Unsupported image extension for recipe {recipe.SourceId}.")
-                };
+                var bytes = await File.ReadAllBytesAsync(recipe.ImagePath, cancellationToken);
+                imageTypes.Add(recipe.SourceId, ImageFile.Detect(bytes)
+                    ?? throw new InvalidDataException($"Image file for recipe {recipe.SourceId} has an unsupported format."));
+            }
+
+            foreach (var recipe in dataset.Recipes)
+            {
+                var (contentType, extension) = imageTypes[recipe.SourceId];
                 await using var image = File.OpenRead(recipe.ImagePath);
                 var stored = await storage.UploadAsync(image, contentType, extension, StorageFolder, cancellationToken);
                 uploadedUrls.Add(stored.Url);
