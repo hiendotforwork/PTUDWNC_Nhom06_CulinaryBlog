@@ -135,11 +135,41 @@ public sealed class OfficialRecipeDataLoaderTests
         await Assert.ThrowsAsync<InvalidDataException>(() => OfficialRecipeDataLoader.LoadAsync(files.DirectoryPath));
     }
 
+    [Fact]
+    public async Task RejectsMappedRecipeSlugLongerThanEntityLimit()
+    {
+        using var files = new DatasetFiles(name: new string('a', 200), sourceId: int.MaxValue);
+        files.WriteImage("001.jpg");
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => OfficialRecipeDataLoader.LoadAsync(files.DirectoryPath));
+    }
+
+    [Fact]
+    public async Task RejectsCategoryThatMapsToEmptySlug()
+    {
+        using var files = new DatasetFiles(category: "!!!");
+        files.WriteImage("001.jpg");
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => OfficialRecipeDataLoader.LoadAsync(files.DirectoryPath));
+    }
+
+    [Fact]
+    public async Task PreservesSourceStepTextExactly()
+    {
+        using var files = new DatasetFiles(step: "  Kho thịt đến mềm.  ");
+        files.WriteImage("001.jpg");
+
+        var dataset = await OfficialRecipeDataLoader.LoadAsync(files.DirectoryPath);
+
+        Assert.Equal("  Kho thịt đến mềm.  ", Assert.Single(Assert.Single(dataset.Recipes).Steps));
+    }
+
     private sealed class DatasetFiles : IDisposable
     {
         public string DirectoryPath { get; } = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
 
-        public DatasetFiles(string name = "Thịt kho tàu", string difficulty = "Dễ", bool writeRecipes = true)
+        public DatasetFiles(string name = "Thịt kho tàu", string difficulty = "Dễ", bool writeRecipes = true,
+            string category = "Món mặn", int sourceId = 1, string step = "Kho thịt đến mềm.")
         {
             Directory.CreateDirectory(Path.Combine(DirectoryPath, "images"));
             if (writeRecipes)
@@ -149,11 +179,11 @@ public sealed class OfficialRecipeDataLoaderTests
                     {
                         new
                         {
-                            id = 1,
+                            id = sourceId,
                             name,
-                            category = "Món mặn",
+                            category,
                             ingredients = new[] { "Thịt ba chỉ: 500g" },
-                            steps = new[] { "Kho thịt đến mềm." },
+                            steps = new[] { step },
                             prep_time_minutes = 20,
                             cook_time_minutes = 60,
                             difficulty,
@@ -161,12 +191,12 @@ public sealed class OfficialRecipeDataLoaderTests
                         }
                     }
                 }));
-            WriteManifest("001.jpg");
+            WriteManifest("001.jpg", sourceId.ToString(), name);
         }
 
-        public void WriteManifest(string file, string recipeId = "1") =>
+        public void WriteManifest(string file, string recipeId = "1", string name = "Thịt kho tàu") =>
             File.WriteAllText(Path.Combine(DirectoryPath, "images", "manifest.json"), JsonSerializer.Serialize(
-                new Dictionary<string, object> { [recipeId] = new { name = "Thịt kho tàu", file, bytes = 1 } }));
+                new Dictionary<string, object> { [recipeId] = new { name, file, bytes = 1 } }));
 
         public void WriteImage(string file, bool inImagesDirectory = true) =>
             File.WriteAllBytes(Path.Combine(inImagesDirectory ? Path.Combine(DirectoryPath, "images") : DirectoryPath, file), [1]);

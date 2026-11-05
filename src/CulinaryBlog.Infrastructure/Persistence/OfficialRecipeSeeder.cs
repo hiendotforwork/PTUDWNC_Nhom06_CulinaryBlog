@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using CulinaryBlog.Application.Files;
@@ -32,6 +31,7 @@ public static class OfficialRecipeSeeder
         var newImageUrls = new Dictionary<int, string>();
         var imageTypes = new Dictionary<int, (string Mime, string Extension)>();
         var oldImageUrls = new HashSet<string>(StringComparer.Ordinal);
+        var commitStarted = false;
         try
         {
             foreach (var recipe in dataset.Recipes)
@@ -73,7 +73,7 @@ public static class OfficialRecipeSeeder
             for (var index = 0; index < categoryNames.Length; index++)
             {
                 var name = categoryNames[index];
-                var slug = Slugify(name);
+                var slug = OfficialRecipeDataLoader.Slugify(name);
                 var stableId = Key("category:" + slug);
                 var category = categories.FirstOrDefault(x => x.Slug == slug);
                 if (category is null)
@@ -110,7 +110,7 @@ public static class OfficialRecipeSeeder
                 var isNew = recipe is null;
                 recipe ??= new Recipe { Id = recipeId, AuthorId = SeedAuthorId, PublishedAt = syncTime };
                 recipe.Title = source.Name;
-                recipe.Slug = $"official-recipe-{source.SourceId}-{Slugify(source.Name)}";
+                recipe.Slug = $"official-recipe-{source.SourceId}-{OfficialRecipeDataLoader.Slugify(source.Name)}";
                 recipe.Description = $"Công thức món {source.Name}.";
                 recipe.Instructions = string.Join("\n", source.Steps);
                 recipe.PrepTime = source.PrepTimeMinutes;
@@ -156,11 +156,14 @@ public static class OfficialRecipeSeeder
             }
 
             await db.SaveChangesAsync(cancellationToken);
+            commitStarted = true;
             await transaction.CommitAsync(cancellationToken);
         }
         catch (Exception original)
         {
-            var cleanupErrors = await TryDeleteObjectsAsync(db, storage, uploadedUrls, cancellationToken);
+            if (commitStarted)
+                throw new AggregateException("Recipe sync commit outcome is unknown; uploaded objects were retained.", original);
+            var cleanupErrors = await TryDeleteObjectsAsync(storage, uploadedUrls);
             if (cleanupErrors.Count > 0)
                 throw new AggregateException("Recipe sync failed and some uploaded objects could not be cleaned up.",
                     new[] { original }.Concat(cleanupErrors));
@@ -309,22 +312,20 @@ public static class OfficialRecipeSeeder
         await db.RecipeImages.IgnoreQueryFilters().AnyAsync(x => !x.IsDeleted
             && (x.OriginalUrl == url || x.MediumUrl == url || x.ThumbnailUrl == url), cancellationToken)
         || await db.RecipeSteps.IgnoreQueryFilters().AnyAsync(x => !x.IsDeleted && x.ImageUrl == url, cancellationToken)
+        || await db.Categories.IgnoreQueryFilters().AnyAsync(x => !x.IsDeleted && x.ImageUrl == url, cancellationToken)
         || await db.Users.AnyAsync(x => x.AvatarUrl == url, cancellationToken);
 
     private static async Task<List<Exception>> TryDeleteObjectsAsync(
-        ApplicationDbContext db,
         IFileStorageService storage,
-        IEnumerable<string> urls,
-        CancellationToken cancellationToken)
+        IEnumerable<string> urls)
     {
         var errors = new List<Exception>();
         foreach (var url in urls.Distinct(StringComparer.Ordinal))
         {
             try
             {
-                if (await IsReferencedAsync(db, url, cancellationToken))
-                    continue;
-                await storage.DeleteAsync(url, cancellationToken);
+                if (storage.IsOwnedUrl(url))
+                    await storage.DeleteAsync(url, CancellationToken.None);
             }
             catch (Exception exception) { errors.Add(exception); }
         }
@@ -333,28 +334,4 @@ public static class OfficialRecipeSeeder
 
     private static Guid Key(string value) => new(SHA256.HashData(Encoding.UTF8.GetBytes("official-recipe:" + value))[..16]);
 
-    private static string Slugify(string value)
-    {
-        var normalized = value.Trim().ToLowerInvariant().Normalize(NormalizationForm.FormD);
-        var builder = new StringBuilder(normalized.Length);
-        var separatorPending = false;
-        foreach (var character in normalized)
-        {
-            if (CharUnicodeInfo.GetUnicodeCategory(character) == UnicodeCategory.NonSpacingMark)
-                continue;
-            var normalizedCharacter = character == 'đ' ? 'd' : character;
-            if (char.IsLetterOrDigit(normalizedCharacter))
-            {
-                if (separatorPending && builder.Length > 0)
-                    builder.Append('-');
-                builder.Append(normalizedCharacter);
-                separatorPending = false;
-            }
-            else
-            {
-                separatorPending = true;
-            }
-        }
-        return builder.ToString().Normalize(NormalizationForm.FormC);
-    }
 }

@@ -1,5 +1,7 @@
 using CulinaryBlog.Infrastructure.Data;
 using CulinaryBlog.Infrastructure.Persistence;
+using CulinaryBlog.Application.Files;
+using CulinaryBlog.Application.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
@@ -21,7 +23,9 @@ if (await db.Recipes.AnyAsync(x => x.Slug.StartsWith("lab2-chuong-"))
     || await db.Categories.AnyAsync(x => x.Slug.StartsWith("lab2-chuong-"))
     || await db.RecipeIngredients.IgnoreQueryFilters().AnyAsync(x => legacyRecipeIds.Contains(x.RecipeId) && !x.IsDeleted)
     || await db.RecipeSteps.IgnoreQueryFilters().AnyAsync(x => legacyRecipeIds.Contains(x.RecipeId) && !x.IsDeleted)
-    || await db.Categories.IgnoreQueryFilters().AnyAsync(x => legacyCategoryIds.Contains(x.Id) && !x.IsDeleted))
+    || await db.Categories.IgnoreQueryFilters().AnyAsync(category => legacyCategoryIds.Contains(category.Id) && !category.IsDeleted
+        && !db.Recipes.IgnoreQueryFilters().Any(recipe => !recipe.IsDeleted
+            && !recipe.Slug.StartsWith("lab2-chuong-") && recipe.CategoryId == category.Id)))
     throw new InvalidOperationException("Legacy Lab 2 recipes, categories, or children remain active.");
 var sampleId = await db.Recipes.Where(x => x.AuthorId == OfficialRecipeSeeder.SeedAuthorId)
     .Where(recipe => db.RecipeSteps.Count(step => step.RecipeId == recipe.Id) >= 2)
@@ -96,4 +100,77 @@ await using (var connection = new NpgsqlConnection(connectionString))
     if (indexed < 100) throw new Exception("Search trigger did not index the official dataset.");
     Console.WriteLine("PASS: Vietnamese unaccent search and insert trigger");
 }
+var dataDirectory = Directory.GetCurrentDirectory();
+while (!File.Exists(Path.Combine(dataDirectory, "recipes.json"))
+    || !File.Exists(Path.Combine(dataDirectory, "images", "manifest.json")))
+    dataDirectory = Directory.GetParent(dataDirectory)?.FullName
+        ?? throw new InvalidOperationException("Could not locate recipes.json and images/manifest.json for rollback verification.");
+var dataset = await OfficialRecipeDataLoader.LoadAsync(dataDirectory);
+var previousImages = await db.RecipeImages.Where(x => x.Recipe.AuthorId == OfficialRecipeSeeder.SeedAuthorId)
+    .Select(x => x.OriginalUrl).ToArrayAsync();
+var storage = new RollbackCheckStorage();
+await using (var connection = new NpgsqlConnection(connectionString))
+{
+    await connection.OpenAsync();
+    await using var command = new NpgsqlCommand("""
+        CREATE OR REPLACE FUNCTION culinary.fail_official_sync_test() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+            RAISE EXCEPTION 'database-check sync failure';
+            RETURN NEW;
+        END $$;
+        CREATE TRIGGER official_sync_failure_test BEFORE UPDATE ON culinary."RecipeImages"
+        FOR EACH ROW EXECUTE FUNCTION culinary.fail_official_sync_test();
+        """, connection);
+    await command.ExecuteNonQueryAsync();
+}
+var syncFailed = false;
+try
+{
+    await OfficialRecipeSeeder.SyncAsync(db, storage, dataset);
+}
+catch (DbUpdateException)
+{
+    syncFailed = true;
+}
+finally
+{
+    await using var connection = new NpgsqlConnection(connectionString);
+    await connection.OpenAsync();
+    await using var command = new NpgsqlCommand("DROP TRIGGER IF EXISTS official_sync_failure_test ON culinary.\"RecipeImages\"; DROP FUNCTION IF EXISTS culinary.fail_official_sync_test();", connection);
+    await command.ExecuteNonQueryAsync();
+}
+if (!syncFailed) throw new InvalidOperationException("Database trigger did not force the official sync to fail.");
+await using (var verificationDb = new ApplicationDbContext(options))
+{
+    var currentImages = await verificationDb.RecipeImages.Where(x => x.Recipe.AuthorId == OfficialRecipeSeeder.SeedAuthorId)
+        .Select(x => x.OriginalUrl).ToArrayAsync();
+    if (!previousImages.Order().SequenceEqual(currentImages.Order()))
+        throw new InvalidOperationException("Failed sync changed existing official image references.");
+}
+if (!storage.UploadedUrls.Order().SequenceEqual(storage.DeletedUrls.Order())
+    || storage.DeletedUrls.Intersect(previousImages).Any())
+    throw new InvalidOperationException("Failed sync did not clean new uploads while preserving old image references.");
+Console.WriteLine("PASS: PostgreSQL sync rollback preserves rows and old images, and cleans new uploads");
 Console.WriteLine("All database checks passed; test mutations rolled back.");
+
+sealed class RollbackCheckStorage : IFileStorageService
+{
+    public List<string> UploadedUrls { get; } = [];
+    public List<string> DeletedUrls { get; } = [];
+
+    public async Task<StoredFile> UploadAsync(Stream stream, string contentType, string extension, string folder, CancellationToken cancellationToken)
+    {
+        await stream.CopyToAsync(Stream.Null, cancellationToken);
+        var url = $"https://minio.local/rollback-check/{Guid.NewGuid():N}{extension}";
+        UploadedUrls.Add(url);
+        return new StoredFile(url);
+    }
+
+    public Task DeleteAsync(string url, CancellationToken cancellationToken)
+    {
+        DeletedUrls.Add(url);
+        return Task.CompletedTask;
+    }
+
+    public bool IsOwnedUrl(string url) => url.StartsWith("https://minio.local/", StringComparison.Ordinal);
+}

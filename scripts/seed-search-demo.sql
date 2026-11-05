@@ -11,6 +11,15 @@ BEGIN
         RAISE EXCEPTION 'Run the official recipe sync first';
     END IF;
 END $$;
+INSERT INTO public."AspNetUsers" (
+    "Id", "DisplayName", "UserName", "NormalizedUserName", "Email", "NormalizedEmail", "EmailConfirmed",
+    "LockoutEnabled", "AccessFailedCount"
+)
+VALUES (
+    'search-demo-fixtures', 'Search Demo Fixtures', 'search.demo', 'SEARCH.DEMO',
+    'search-demo-fixtures@example.invalid', 'SEARCH-DEMO-FIXTURES@EXAMPLE.INVALID', true, false, 0
+)
+ON CONFLICT ("Id") DO NOTHING;
 WITH samples AS (
     SELECT i,
         CASE WHEN i % 2 = 0 THEN 'Phở bò'
@@ -32,7 +41,7 @@ SELECT md5('fr-srch-demo-' || i)::uuid,
     1 + (i % 3), status,
     CASE WHEN status = 1 THEN timestamptz '2026-10-01 08:00:00+07' - i * interval '1 day' ELSE NULL END,
     (SELECT "CategoryId" FROM culinary."Recipes" WHERE "AuthorId" = 'official-recipe-dataset' AND NOT "IsDeleted" ORDER BY "Id" LIMIT 1),
-    'official-recipe-dataset', timestamptz '2026-10-01 08:00:00+07' - i * interval '1 day',
+    'search-demo-fixtures', timestamptz '2026-10-01 08:00:00+07' - i * interval '1 day',
     false, decode(md5('fr-srch-demo-version-' || i), 'hex')
 FROM samples
 ON CONFLICT ("Id") DO NOTHING;

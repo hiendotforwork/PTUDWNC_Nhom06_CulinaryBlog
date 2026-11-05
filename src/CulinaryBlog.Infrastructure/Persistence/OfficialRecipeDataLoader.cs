@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using CulinaryBlog.Domain.Enums;
@@ -60,6 +62,7 @@ public static class OfficialRecipeDataLoader
             }
 
             var recipeIds = new HashSet<int>();
+            var categorySlugs = new Dictionary<string, string>(StringComparer.Ordinal);
             var recipes = new List<OfficialRecipeData>(sourceRecipes.Count);
             foreach (var source in sourceRecipes)
             {
@@ -69,6 +72,12 @@ public static class OfficialRecipeDataLoader
                     throw new InvalidDataException("Recipe IDs must be unique positive integers.");
                 var name = RequiredText(source.Name, "recipe name", 5, 200);
                 var category = RequiredText(source.Category, "category", 1, 100);
+                var categorySlug = Slugify(category);
+                var recipeSlug = $"official-recipe-{source.Id}-{Slugify(name)}";
+                if (categorySlug.Length is 0 or > 120 || recipeSlug.Length > 220
+                    || categorySlugs.TryGetValue(categorySlug, out var existingCategory) && existingCategory != category)
+                    throw new InvalidDataException($"Recipe {source.Id} maps to an invalid or duplicate slug.");
+                categorySlugs[categorySlug] = category;
                 if (source.PrepTimeMinutes is not > 0 || source.CookTimeMinutes is not >= 0 || source.Servings is not > 0)
                     throw new InvalidDataException($"Recipe {source.Id} has invalid time or serving values.");
                 var difficulty = source.Difficulty switch
@@ -107,11 +116,41 @@ public static class OfficialRecipeDataLoader
         return value.Trim();
     }
 
+    internal static string Slugify(string value)
+    {
+        var normalized = value.Trim().ToLowerInvariant().Normalize(NormalizationForm.FormD);
+        var builder = new StringBuilder(normalized.Length);
+        var separatorPending = false;
+        foreach (var character in normalized)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(character) == UnicodeCategory.NonSpacingMark)
+                continue;
+            var normalizedCharacter = character == 'đ' ? 'd' : character;
+            if (char.IsLetterOrDigit(normalizedCharacter))
+            {
+                if (separatorPending && builder.Length > 0)
+                    builder.Append('-');
+                builder.Append(normalizedCharacter);
+                separatorPending = false;
+            }
+            else
+            {
+                separatorPending = true;
+            }
+        }
+        return builder.ToString().Normalize(NormalizationForm.FormC);
+    }
+
     private static IReadOnlyList<string> RequiredTexts(List<string?>? values, string field, int maxLength, int recipeId)
     {
         if (values is not { Count: > 0 })
             throw new InvalidDataException($"Recipe {recipeId} must contain {field}.");
-        return values.Select((value, index) => RequiredText(value, $"Recipe {recipeId} {field}[{index}]", 1, maxLength)).ToArray();
+        return values.Select((value, index) =>
+        {
+            if (string.IsNullOrWhiteSpace(value) || value.Length > maxLength)
+                throw new InvalidDataException($"Recipe {recipeId} {field}[{index}] must contain 1 to {maxLength} characters.");
+            return value;
+        }).ToArray();
     }
 
     private static string ResolveDirectory(string directory)

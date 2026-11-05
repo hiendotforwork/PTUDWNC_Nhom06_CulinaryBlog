@@ -150,6 +150,25 @@ public sealed class OfficialRecipeSeederTests
     }
 
     [Fact]
+    public async Task SyncPreservesLegacyCategoryUsedByUnrelatedRecipe()
+    {
+        using var files = new RecipeFiles();
+        await using var db = CreateContext();
+        var legacyCategory = new Category { Name = "Danh mục Lab2 dùng chung", Slug = "lab2-chuong-category-shared", OrderIndex = 1 };
+        db.Add(new Recipe
+        {
+            Title = "Công thức thành viên", Slug = "member-shared-category", Description = "Công thức riêng.",
+            PrepTime = 10, CookTime = 5, Servings = 2, Difficulty = RecipeDifficulty.Easy,
+            Status = RecipeStatus.Draft, Category = legacyCategory, AuthorId = "member"
+        });
+        await db.SaveChangesAsync();
+
+        await OfficialRecipeSeeder.SyncAsync(db, new RecordingStorage(), Dataset(files, Recipe(1)));
+
+        Assert.False((await db.Categories.IgnoreQueryFilters().SingleAsync(x => x.Id == legacyCategory.Id)).IsDeleted);
+    }
+
+    [Fact]
     public async Task UploadFailureDeletesEarlierUploadsWithoutChangingDatabase()
     {
         using var files = new RecipeFiles();
@@ -185,6 +204,37 @@ public sealed class OfficialRecipeSeederTests
 
         Assert.Equal("member-recipe", (await db.Recipes.SingleAsync()).Slug);
         Assert.Equal(storage.UploadedUrls, storage.DeletedUrls);
+    }
+
+    [Fact]
+    public async Task CancellationAfterUploadStillDeletesUploadedObjects()
+    {
+        using var files = new RecipeFiles();
+        await using var db = CreateContext();
+        using var cancellation = new CancellationTokenSource();
+        var storage = new RecordingStorage { CancelAfterUpload = cancellation };
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => OfficialRecipeSeeder.SyncAsync(
+            db, storage, Dataset(files, Recipe(1)), cancellation.Token));
+
+        Assert.Equal(storage.UploadedUrls, storage.DeletedUrls);
+    }
+
+    [Fact]
+    public async Task ResyncKeepsOldImageReferencedByUnrelatedCategory()
+    {
+        using var files = new RecipeFiles();
+        await using var db = CreateContext();
+        var storage = new RecordingStorage();
+        await OfficialRecipeSeeder.SyncAsync(db, storage, Dataset(files, Recipe(1)));
+        var oldUrl = storage.UploadedUrls.Single();
+        db.Categories.Add(new Category { Name = "Ảnh dùng chung", Slug = "anh-dung-chung", ImageUrl = oldUrl, OrderIndex = 99 });
+        await db.SaveChangesAsync();
+        storage.DeletedUrls.Clear();
+
+        await OfficialRecipeSeeder.SyncAsync(db, storage, Dataset(files, Recipe(1)));
+
+        Assert.DoesNotContain(oldUrl, storage.DeletedUrls);
     }
 
     [Fact]
@@ -225,6 +275,7 @@ public sealed class OfficialRecipeSeederTests
         public List<string> DeletedUrls { get; } = [];
         public List<(string ContentType, string Extension)> UploadedTypes { get; } = [];
         public int? FailOnUploadNumber { get; init; }
+        public CancellationTokenSource? CancelAfterUpload { get; init; }
 
         public async Task<StoredFile> UploadAsync(Stream stream, string contentType, string extension, string folder, CancellationToken cancellationToken)
         {
@@ -234,6 +285,7 @@ public sealed class OfficialRecipeSeederTests
                 throw new IOException("simulated upload failure");
             var url = $"https://minio.local/recipes/{Guid.NewGuid():N}.jpg";
             UploadedUrls.Add(url);
+            CancelAfterUpload?.Cancel();
             return new StoredFile(url);
         }
 
