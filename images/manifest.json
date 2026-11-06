@@ -1,0 +1,502 @@
+{
+  "1": {
+    "name": "Thịt kho tàu",
+    "file": "001-thit-kho-tau.webp",
+    "bytes": 113122
+  },
+  "2": {
+    "name": "Cá kho tộ",
+    "file": "002-ca-kho-to.jpg",
+    "bytes": 98461
+  },
+  "3": {
+    "name": "Gà xào sả ớt",
+    "file": "003-ga-xao-sa-ot.jpg",
+    "bytes": 159505
+  },
+  "4": {
+    "name": "Sườn xào chua ngọt",
+    "file": "004-suon-xao-chua-ngot.png",
+    "bytes": 404869
+  },
+  "5": {
+    "name": "Bò lúc lắc",
+    "file": "005-bo-luc-lac.jpg",
+    "bytes": 44513
+  },
+  "6": {
+    "name": "Trứng chiên thịt bằm",
+    "file": "006-trung-chien-thit-bam.jpg",
+    "bytes": 294894
+  },
+  "7": {
+    "name": "Thịt heo quay",
+    "file": "007-thit-heo-quay.jpg",
+    "bytes": 51311
+  },
+  "8": {
+    "name": "Gà kho gừng",
+    "file": "008-ga-kho-gung.jpg",
+    "bytes": 46132
+  },
+  "9": {
+    "name": "Cá thu sốt cà chua",
+    "file": "009-ca-thu-sot-ca-chua.jpg",
+    "bytes": 94614
+  },
+  "10": {
+    "name": "Tôm rim mặn ngọt",
+    "file": "010-tom-rim-man-ngot.jpg",
+    "bytes": 201284
+  },
+  "11": {
+    "name": "Mực xào chua ngọt",
+    "file": "011-muc-xao-chua-ngot.jpg",
+    "bytes": 58940
+  },
+  "12": {
+    "name": "Bò xào hành tây",
+    "file": "012-bo-xao-hanh-tay.jpg",
+    "bytes": 86531
+  },
+  "13": {
+    "name": "Bò kho",
+    "file": "013-bo-kho.jpg",
+    "bytes": 55493
+  },
+  "14": {
+    "name": "Đậu hũ nhồi thịt sốt cà",
+    "file": "014-dau-hu-nhoi-thit-sot-ca.jpg",
+    "bytes": 235858
+  },
+  "15": {
+    "name": "Gà rô ti",
+    "file": "015-ga-ro-ti.jpg",
+    "bytes": 52937
+  },
+  "16": {
+    "name": "Sườn nướng mật ong",
+    "file": "016-suon-nuong-mat-ong.jpg",
+    "bytes": 372656
+  },
+  "17": {
+    "name": "Cá diêu hồng chiên giòn",
+    "file": "017-ca-dieu-hong-chien-gion.jpg",
+    "bytes": 285435
+  },
+  "18": {
+    "name": "Chả trứng hấp",
+    "file": "018-cha-trung-hap.jpg",
+    "bytes": 39491
+  },
+  "19": {
+    "name": "Thịt viên sốt cà",
+    "file": "019-thit-vien-sot-ca.webp",
+    "bytes": 83040
+  },
+  "20": {
+    "name": "Gà chiên mắm",
+    "file": "020-ga-chien-mam.jpg",
+    "bytes": 111224
+  },
+  "21": {
+    "name": "Gà kho nghệ",
+    "file": "021-ga-kho-nghe.jpg",
+    "bytes": 22345
+  },
+  "22": {
+    "name": "Sườn kho trứng cút",
+    "file": "022-suon-kho-trung-cut.jpg",
+    "bytes": 75649
+  },
+  "23": {
+    "name": "Bò xào rau muống",
+    "file": "023-bo-xao-rau-muong.jpg",
+    "bytes": 156869
+  },
+  "24": {
+    "name": "Tôm sốt bơ tỏi",
+    "file": "024-tom-sot-bo-toi.jpg",
+    "bytes": 51808
+  },
+  "25": {
+    "name": "Mực nhồi thịt hấp",
+    "file": "025-muc-nhoi-thit-hap.jpg",
+    "bytes": 102358
+  },
+  "26": {
+    "name": "Canh chua cá lóc",
+    "file": "026-canh-chua-ca-loc.png",
+    "bytes": 933837
+  },
+  "27": {
+    "name": "Canh khổ qua nhồi thịt",
+    "file": "027-canh-kho-qua-nhoi-thit.jpg",
+    "bytes": 86390
+  },
+  "28": {
+    "name": "Canh bí đao nấu sườn",
+    "file": "028-canh-bi-dao-nau-suon.png",
+    "bytes": 660147
+  },
+  "29": {
+    "name": "Canh rau ngót nấu thịt bằm",
+    "file": "029-canh-rau-ngot-nau-thit-bam.png",
+    "bytes": 1271439
+  },
+  "30": {
+    "name": "Canh kim chi đậu hũ thịt ba chỉ",
+    "file": "030-canh-kim-chi-dau-hu-thit-ba-chi.jpg",
+    "bytes": 75575
+  },
+  "31": {
+    "name": "Canh cải chua nấu sườn non",
+    "file": "031-canh-cai-chua-nau-suon-non.jpg",
+    "bytes": 385521
+  },
+  "32": {
+    "name": "Canh trứng cà chua",
+    "file": "032-canh-trung-ca-chua.jpg",
+    "bytes": 213116
+  },
+  "33": {
+    "name": "Canh mồng tơi nấu mướp",
+    "file": "033-canh-mong-toi-nau-muop.jpg",
+    "bytes": 340620
+  },
+  "34": {
+    "name": "Canh bí đỏ nấu tôm",
+    "file": "034-canh-bi-do-nau-tom.jpg",
+    "bytes": 267723
+  },
+  "35": {
+    "name": "Canh rong biển đậu hũ",
+    "file": "035-canh-rong-bien-dau-hu.jpg",
+    "bytes": 219105
+  },
+  "36": {
+    "name": "Súp cua",
+    "file": "036-sup-cua.jpg",
+    "bytes": 182025
+  },
+  "37": {
+    "name": "Rau muống xào tỏi",
+    "file": "037-rau-muong-xao-toi.jpg",
+    "bytes": 139341
+  },
+  "38": {
+    "name": "Bông cải xào thịt bò",
+    "file": "038-bong-cai-xao-thit-bo.jpg",
+    "bytes": 101406
+  },
+  "39": {
+    "name": "Giá đỗ xào thịt bằm",
+    "file": "039-gia-do-xao-thit-bam.jpg",
+    "bytes": 62087
+  },
+  "40": {
+    "name": "Khổ qua xào trứng",
+    "file": "040-kho-qua-xao-trung.jpg",
+    "bytes": 137506
+  },
+  "41": {
+    "name": "Cải thìa xào nấm",
+    "file": "041-cai-thia-xao-nam.jpg",
+    "bytes": 100210
+  },
+  "42": {
+    "name": "Đậu cô ve xào thịt bò",
+    "file": "042-dau-co-ve-xao-thit-bo.jpg",
+    "bytes": 732704
+  },
+  "43": {
+    "name": "Rau cần xào thịt bò",
+    "file": "043-rau-can-xao-thit-bo.jpg",
+    "bytes": 131043
+  },
+  "44": {
+    "name": "Su su xào trứng",
+    "file": "044-su-su-xao-trung.jpg",
+    "bytes": 43193
+  },
+  "45": {
+    "name": "Nộm hoa chuối",
+    "file": "045-nom-hoa-chuoi.jpg",
+    "bytes": 70673
+  },
+  "46": {
+    "name": "Gỏi đu đủ tôm thịt",
+    "file": "046-goi-du-du-tom-thit.jpg",
+    "bytes": 47854
+  },
+  "48": {
+    "name": "Đậu bắp luộc chấm chao",
+    "file": "048-dau-bap-luoc-cham-chao.jpg",
+    "bytes": 95237
+  },
+  "49": {
+    "name": "Nộm bắp cải cà rốt",
+    "file": "049-nom-bap-cai-ca-rot.jpg",
+    "bytes": 132923
+  },
+  "50": {
+    "name": "Rau càng cua trộn dầu giấm",
+    "file": "050-rau-cang-cua-tron-dau-giam.png",
+    "bytes": 841032
+  },
+  "51": {
+    "name": "Phở bò",
+    "file": "051-pho-bo.jpg",
+    "bytes": 1220100
+  },
+  "52": {
+    "name": "Bún bò Huế",
+    "file": "052-bun-bo-hue.jpg",
+    "bytes": 351979
+  },
+  "53": {
+    "name": "Cơm chiên Dương Châu",
+    "file": "053-com-chien-duong-chau.jpg",
+    "bytes": 318101
+  },
+  "54": {
+    "name": "Bún thịt nướng",
+    "file": "054-bun-thit-nuong.jpg",
+    "bytes": 163426
+  },
+  "55": {
+    "name": "Hủ tiếu Nam Vang",
+    "file": "055-hu-tieu-nam-vang.jpg",
+    "bytes": 386820
+  },
+  "56": {
+    "name": "Mì xào giòn",
+    "file": "056-mi-xao-gion.jpg",
+    "bytes": 435167
+  },
+  "57": {
+    "name": "Cơm tấm sườn bì",
+    "file": "057-com-tam-suon-bi.jpg",
+    "bytes": 283261
+  },
+  "58": {
+    "name": "Bún chả Hà Nội",
+    "file": "058-bun-cha-ha-noi.png",
+    "bytes": 1077459
+  },
+  "59": {
+    "name": "Bún riêu cua",
+    "file": "059-bun-rieu-cua.jpg",
+    "bytes": 382709
+  },
+  "60": {
+    "name": "Cơm gà Hội An",
+    "file": "060-com-ga-hoi-an.jpg",
+    "bytes": 264271
+  },
+  "61": {
+    "name": "Mì Quảng",
+    "file": "061-mi-quang.jpg",
+    "bytes": 6974835
+  },
+  "62": {
+    "name": "Phở gà",
+    "file": "062-pho-ga.jpg",
+    "bytes": 142209
+  },
+  "63": {
+    "name": "Bún mắm",
+    "file": "063-bun-mam.jpg",
+    "bytes": 1081163
+  },
+  "64": {
+    "name": "Đậu hũ sốt cà chua chay",
+    "file": "064-dau-hu-sot-ca-chua-chay.jpg",
+    "bytes": 160125
+  },
+  "65": {
+    "name": "Nấm kho chay",
+    "file": "065-nam-kho-chay.jpg",
+    "bytes": 156951
+  },
+  "66": {
+    "name": "Gỏi cuốn chay",
+    "file": "066-goi-cuon-chay.webp",
+    "bytes": 66506
+  },
+  "67": {
+    "name": "Canh nấm chay",
+    "file": "067-canh-nam-chay.jpg",
+    "bytes": 64051
+  },
+  "68": {
+    "name": "Cơm chiên chay",
+    "file": "068-com-chien-chay.jpg",
+    "bytes": 77602
+  },
+  "69": {
+    "name": "Đậu hũ kho tiêu chay",
+    "file": "069-dau-hu-kho-tieu-chay.jpg",
+    "bytes": 135678
+  },
+  "70": {
+    "name": "Bánh xèo chay",
+    "file": "070-banh-xeo-chay.jpg",
+    "bytes": 426055
+  },
+  "71": {
+    "name": "Hủ tiếu chay",
+    "file": "071-hu-tieu-chay.jpg",
+    "bytes": 499600
+  },
+  "72": {
+    "name": "Gỏi đu đủ chay",
+    "file": "072-goi-du-du-chay.webp",
+    "bytes": 180236
+  },
+  "73": {
+    "name": "Cà tím kho chay",
+    "file": "073-ca-tim-kho-chay.jpg",
+    "bytes": 305988
+  },
+  "74": {
+    "name": "Bún nấm chay",
+    "file": "074-bun-nam-chay.jpg",
+    "bytes": 44819
+  },
+  "75": {
+    "name": "Chả giò chay",
+    "file": "075-cha-gio-chay.jpg",
+    "bytes": 765796
+  },
+  "77": {
+    "name": "Chè bưởi",
+    "file": "077-che-buoi.jpg",
+    "bytes": 85251
+  },
+  "78": {
+    "name": "Bánh flan",
+    "file": "078-banh-flan.jpg",
+    "bytes": 62005
+  },
+  "79": {
+    "name": "Rau câu dừa",
+    "file": "079-rau-cau-dua.jpg",
+    "bytes": 68347
+  },
+  "80": {
+    "name": "Xôi xoài",
+    "file": "080-xoi-xoai.jpg",
+    "bytes": 374559
+  },
+  "81": {
+    "name": "Chè trôi nước",
+    "file": "081-che-troi-nuoc.jpg",
+    "bytes": 63571
+  },
+  "82": {
+    "name": "Chè Thái",
+    "file": "082-che-thai.png",
+    "bytes": 533508
+  },
+  "83": {
+    "name": "Tào phớ",
+    "file": "083-tao-pho.jpg",
+    "bytes": 85788
+  },
+  "84": {
+    "name": "Chè bắp",
+    "file": "084-che-bap.jpg",
+    "bytes": 93594
+  },
+  "85": {
+    "name": "Kem chuối",
+    "file": "085-kem-chuoi.jpg",
+    "bytes": 51885
+  },
+  "86": {
+    "name": "Trà sữa trân châu",
+    "file": "086-tra-sua-tran-chau.jpg",
+    "bytes": 73996
+  },
+  "87": {
+    "name": "Sinh tố bơ",
+    "file": "087-sinh-to-bo.jpg",
+    "bytes": 262062
+  },
+  "88": {
+    "name": "Nước chanh dây",
+    "file": "088-nuoc-chanh-day.webp",
+    "bytes": 271808
+  },
+  "89": {
+    "name": "Cà phê sữa đá",
+    "file": "089-ca-phe-sua-da.jpg",
+    "bytes": 44405
+  },
+  "90": {
+    "name": "Sữa đậu nành",
+    "file": "090-sua-dau-nanh.jpg",
+    "bytes": 113286
+  },
+  "91": {
+    "name": "Trà đào cam sả",
+    "file": "091-tra-dao-cam-sa.jpg",
+    "bytes": 159928
+  },
+  "92": {
+    "name": "Sinh tố mãng cầu",
+    "file": "092-sinh-to-mang-cau.jpg",
+    "bytes": 119693
+  },
+  "93": {
+    "name": "Bánh tráng trộn",
+    "file": "093-banh-trang-tron.webp",
+    "bytes": 85848
+  },
+  "94": {
+    "name": "Gỏi xoài tôm khô",
+    "file": "094-goi-xoai-tom-kho.png",
+    "bytes": 410088
+  },
+  "95": {
+    "name": "Nem chua rán",
+    "file": "095-nem-chua-ran.png",
+    "bytes": 768081
+  },
+  "96": {
+    "name": "Bắp xào",
+    "file": "096-bap-xao.jpg",
+    "bytes": 90342
+  },
+  "97": {
+    "name": "Khoai lang kén",
+    "file": "097-khoai-lang-ken.png",
+    "bytes": 128082
+  },
+  "98": {
+    "name": "Bánh tráng nướng",
+    "file": "098-banh-trang-nuong.jpg",
+    "bytes": 153408
+  },
+  "99": {
+    "name": "Xoài lắc",
+    "file": "099-xoai-lac.jpg",
+    "bytes": 48339
+  },
+  "100": {
+    "name": "Chân gà sả tắc",
+    "file": "100-chan-ga-sa-tac.jpg",
+    "bytes": 99292
+  },
+  "47": {
+    "name": "Salad dưa chuột",
+    "file": "047-salad-dua-chuot.jpg",
+    "bytes": 143449
+  },
+  "76": {
+    "name": "Chè đậu xanh",
+    "file": "076-che-dau-xanh.jpg",
+    "bytes": 69354
+  }
+}

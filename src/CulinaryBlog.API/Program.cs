@@ -1,5 +1,5 @@
 // Tệp khởi động API với PostgreSQL dùng chung cho Identity và Recipe.
-// Khi chạy bằng Docker, ứng dụng tự áp dụng migration, seed Lab 2 và phục vụ ảnh từ Docker Volume.
+// Khi chạy bằng Docker, ứng dụng tự áp dụng migration và phục vụ ảnh từ Docker Volume.
 
 using MediatR;
 using Serilog;
@@ -7,7 +7,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authentication.OAuth;
 using System.Text.Json;
+using System.Threading.RateLimiting;
 using CulinaryBlog.Application.Recipes.Validation;
+using CulinaryBlog.Application.Files;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -33,6 +35,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
+using ImageMagick;
 using AuthApplicationUser = CulinaryBlog.Domain.Entities.ApplicationUser;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -40,21 +43,75 @@ var isTesting = builder.Environment.IsEnvironment("Testing");
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? "Host=127.0.0.1;Port=55432;Database=culinary_blog;Username=culinary;Password=culinary_dev_password";
 
-var labCommand = args.FirstOrDefault(x => x.StartsWith("--lab2-"));
+if (args.Contains("--sync-recipes", StringComparer.Ordinal))
+{
+    if (string.Equals(builder.Configuration["FileStorage:Provider"], "Local", StringComparison.OrdinalIgnoreCase))
+        throw new InvalidOperationException("--sync-recipes requires FileStorage:Provider=Minio.");
+    builder.Configuration["ConnectionStrings:DefaultConnection"] ??= connectionString;
+    using var storageHost = Host.CreateDefaultBuilder()
+        .ConfigureServices(services => services.AddFileStorage(builder.Configuration, builder.Environment))
+        .Build();
+    var storage = storageHost.Services.GetRequiredService<IFileStorageService>();
+    await using var db = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
+        .UseNpgsql(connectionString, postgresOptions => postgresOptions.MigrationsHistoryTable("__EFMigrationsHistory", "public"))
+        .Options);
+    var dataDirectory = Directory.GetCurrentDirectory();
+    while (!File.Exists(Path.Combine(dataDirectory, "recipes.json"))
+        || !File.Exists(Path.Combine(dataDirectory, "images", "manifest.json")))
+    {
+        dataDirectory = Directory.GetParent(dataDirectory)?.FullName
+            ?? throw new InvalidOperationException("Run --sync-recipes from the repository containing recipes.json and images/manifest.json.");
+    }
+    var dataset = await OfficialRecipeDataLoader.LoadAsync(dataDirectory);
+    var temporaryImages = new List<string>();
+    try
+    {
+        var recipes = new List<OfficialRecipeData>(dataset.Recipes.Count);
+        foreach (var recipe in dataset.Recipes)
+        {
+            if (new FileInfo(recipe.ImagePath).Length <= ImageFile.MaxBytes)
+            {
+                recipes.Add(recipe);
+                continue;
+            }
+
+            using var image = new MagickImage(recipe.ImagePath);
+            image.Strip();
+            image.Quality = 85;
+            var temporaryPath = Path.Combine(Path.GetTempPath(), $"official-recipe-{recipe.SourceId}-{Guid.NewGuid():N}.jpg");
+            temporaryImages.Add(temporaryPath);
+            image.Write(temporaryPath, MagickFormat.Jpeg);
+            if (new FileInfo(temporaryPath).Length > ImageFile.MaxBytes)
+            {
+                image.Resize(new MagickGeometry(2048, 2048));
+                image.Quality = 75;
+                image.Write(temporaryPath, MagickFormat.Jpeg);
+            }
+            if (new FileInfo(temporaryPath).Length > ImageFile.MaxBytes)
+                throw new InvalidDataException($"Image for recipe {recipe.SourceId} cannot be reduced below the 5 MiB storage limit.");
+            recipes.Add(recipe with { ImagePath = temporaryPath });
+        }
+
+        var result = await OfficialRecipeSeeder.SyncAsync(db, storage, new OfficialRecipeDataset(recipes));
+        Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+    }
+    finally
+    {
+        foreach (var temporaryImage in temporaryImages)
+            File.Delete(temporaryImage);
+    }
+    return;
+}
+
+var labCommand = args.FirstOrDefault(x => x.StartsWith("--lab2-", StringComparison.Ordinal));
 if (labCommand is not null)
 {
-    if (labCommand is not ("--lab2-migrate" or "--lab2-seed" or "--lab2-verify"))
-        throw new ArgumentException("Unknown Lab 2 command.");
+    if (labCommand != "--lab2-migrate")
+        throw new ArgumentException("The only remaining Lab 2 command is --lab2-migrate.");
     var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(connectionString, postgresOptions => postgresOptions.MigrationsHistoryTable("__EFMigrationsHistory", "public")).Options;
     await using var db = new ApplicationDbContext(options);
-    if (labCommand == "--lab2-migrate")
-    {
-        await RegisterExistingDockerDatabaseAsync(db);
-        await db.Database.MigrateAsync();
-    }
-    if (labCommand == "--lab2-seed") await Lab2Seeder.SeedAsync(db);
-    if (labCommand != "--lab2-migrate")
-        Console.WriteLine(JsonSerializer.Serialize(await Lab2Seeder.VerifyAsync(db), new JsonSerializerOptions { WriteIndented = true }));
+    await RegisterExistingDockerDatabaseAsync(db);
+    await db.Database.MigrateAsync();
     return;
 }
 if (!isTesting)
@@ -193,24 +250,6 @@ builder.Services.AddSingleton<IConfigureOptions<Microsoft.AspNetCore.RateLimitin
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.AddPolicy("RegisterRateLimit", context =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
-            _ => new FixedWindowRateLimiterOptions { PermitLimit = defaultPermitLimit, Window = TimeSpan.FromMinutes(1) }));
-    options.AddPolicy("LoginRateLimit", context =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
-            _ => new FixedWindowRateLimiterOptions { PermitLimit = defaultPermitLimit, Window = TimeSpan.FromMinutes(1) }));
-    var refreshPermitLimit = isTesting ? 1000 : 30;
-    options.AddPolicy("RefreshRateLimit", context =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
-            _ => new FixedWindowRateLimiterOptions { PermitLimit = refreshPermitLimit, Window = TimeSpan.FromMinutes(1) }));
-    var resendPermitLimit = isTesting ? 1000 : 5;
-    options.AddPolicy("ResendEmailRateLimit", context =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
-            _ => new FixedWindowRateLimiterOptions { PermitLimit = resendPermitLimit, Window = TimeSpan.FromMinutes(1) }));
     var passwordResetPermitLimit = builder.Configuration.GetValue<int?>("RateLimits:PasswordResetPermitLimit") ?? (isTesting ? 1000 : 5);
     options.AddPolicy("PasswordResetRateLimit", context =>
         RateLimitPartition.GetFixedWindowLimiter(
@@ -240,8 +279,6 @@ if (!isTesting && builder.Configuration.GetValue("Database:AutoMigrate", false))
     var database = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     await RegisterExistingDockerDatabaseAsync(database);
     await database.Database.MigrateAsync();
-    if (builder.Configuration.GetValue("Database:SeedLab2", false))
-        await Lab2Seeder.SeedAsync(database);
 }
 
 if (app.Environment.IsDevelopment())
