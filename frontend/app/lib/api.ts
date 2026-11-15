@@ -40,11 +40,11 @@ type ApiImage = { id: string; originalUrl: string; mediumUrl?: string; thumbnail
 type ApiRecipe = {
   id: string; title: string; slug: string; description: string; instructions?: string;
   prepTime: number; cookTime: number; servings: number; difficulty: number; status: number;
-  categoryId: string; categoryName: string; authorId: string; authorName: string;
-  primaryImageUrl?: string; images?: ApiImage[]; ingredients?: ApiIngredient[]; steps?: ApiStep[];
+  categoryId: string; categoryName: string; categorySlug?: string; authorId: string; authorName: string;
+  authorAvatarUrl?: string | null; primaryImageUrl?: string; images?: ApiImage[]; ingredients?: ApiIngredient[]; steps?: ApiStep[];
   nutrition?: ApiNutrition; createdAt: string; updatedAt?: string; rowVersion?: string;
 };
-type RecipePage = { items: ApiRecipe[] };
+type RecipePage = { items: ApiRecipe[]; totalPages: number };
 type ApiCategory = {
   id: string;
   name: string;
@@ -63,7 +63,12 @@ type ApiCategoryRecipe = {
   difficulty: string;
   categoryId: string;
   categoryName: string;
+  categorySlug: string;
   createdAt: string;
+  authorId?: string | null;
+  authorName?: string | null;
+  authorAvatarUrl?: string | null;
+  primaryImageUrl?: string | null;
 };
 export type CategoryDetailResponse = {
   category: ApiCategory;
@@ -355,14 +360,14 @@ export function mapRecipe(raw: ApiRecipe): Recipe {
       displayName: raw.authorName,
       userName: raw.authorName,
       email: "",
-      avatarUrl: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
+      avatarUrl: mediaUrl(raw.authorAvatarUrl) || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
       role: "User",
       createdAt: raw.createdAt,
     },
     category: {
       id: raw.categoryId,
       name: raw.categoryName,
-      slug: raw.categoryName.toLowerCase().replace(/\s+/g, "-"),
+      slug: raw.categorySlug || "",
       description: "",
       icon: "🍽️",
       recipeCount: 0,
@@ -409,22 +414,24 @@ function mapCategoryRecipe(raw: ApiCategoryRecipe): Recipe {
     servings: raw.servings,
     difficultyLevel: recipeDifficulty,
     status: "Published",
-    images: [],
+    images: raw.primaryImageUrl
+      ? [{ id: `primary-${raw.id}`, url: mediaUrl(raw.primaryImageUrl), isPrimary: true }]
+      : [],
     ingredients: [],
     steps: [],
     author: {
-      id: "",
-      displayName: "Cộng đồng Culinary Blog",
+      id: raw.authorId || "",
+      displayName: raw.authorName || "Cộng đồng Culinary Blog",
       userName: "",
       email: "",
-      avatarUrl: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
+      avatarUrl: mediaUrl(raw.authorAvatarUrl) || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80",
       role: "User",
       createdAt: raw.createdAt,
     },
     category: {
       id: raw.categoryId,
       name: raw.categoryName,
-      slug: "",
+      slug: raw.categorySlug,
       description: "",
       icon: "Utensils",
       recipeCount: 0,
@@ -498,11 +505,25 @@ export async function deleteCategory(id: string): Promise<void> {
 }
 
 export async function getRecipes(mine = false): Promise<Recipe[]> {
-  const res = mine
-    ? await authFetch(`${API_BASE}/api/v1/recipes?page=1&pageSize=50&mine=true`)
-    : await fetch(`${API_BASE}/api/v1/recipes?page=1&pageSize=50`);
-  const page = await handleResponse<RecipePage>(res);
-  return page.items.map(mapRecipe);
+  const pageSize = 50;
+  const fetchPage = async (pageNumber: number): Promise<RecipePage> => {
+    const query = new URLSearchParams({
+      page: String(pageNumber),
+      pageSize: String(pageSize),
+      ...(mine ? { mine: "true" } : {}),
+    });
+    const url = `${API_BASE}/api/v1/recipes?${query}`;
+    const res = mine ? await authFetch(url) : await fetch(url);
+    return handleResponse<RecipePage>(res);
+  };
+
+  const firstPage = await fetchPage(1);
+  const remainingPages = await Promise.all(
+    Array.from({ length: Math.max(0, firstPage.totalPages - 1) }, (_, index) =>
+      fetchPage(index + 2)
+    )
+  );
+  return [firstPage, ...remainingPages].flatMap((page) => page.items).map(mapRecipe);
 }
 
 export async function getRecipe(slug: string): Promise<Recipe> {

@@ -12,4 +12,9 @@ public sealed record RecipeSummaryDto(
     Guid CategoryId,
     string CategoryName,
     DateTimeOffset CreatedAt,
-    double? RelevanceScore = null);
+    double? RelevanceScore = null,
+    string? CategorySlug = null,
+    string? AuthorId = null,
+    string? AuthorName = null,
+    string? AuthorAvatarUrl = null,
+    string? PrimaryImageUrl = null);

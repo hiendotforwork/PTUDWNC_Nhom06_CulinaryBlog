@@ -1,3 +1,4 @@
+
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 COPY ["CulinaryBlog.slnx", "./"]
@@ -11,6 +12,9 @@ RUN dotnet publish src/CulinaryBlog.API/CulinaryBlog.API.csproj -c Release -o /a
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgssapi-krb5-2 \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/publish .
 RUN mkdir -p /app/wwwroot/uploads
 EXPOSE 8080

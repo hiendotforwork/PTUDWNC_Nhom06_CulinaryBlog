@@ -9,6 +9,7 @@ using CulinaryBlog.Domain.Enums;
 using CulinaryBlog.Infrastructure.Data;
 using CulinaryBlog.Integration.Tests.Helpers;
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
@@ -30,13 +31,22 @@ public sealed class CategoryTests(CustomWebApplicationFactory factory)
         };
         var authorSession = await CreateAuthorClientAsync();
         using var author = authorSession.Client;
+        var publishedRecipe = CreateRecipe(category.Id, authorSession.UserId, RecipeStatus.Published, "published");
+        publishedRecipe.Images.Add(new RecipeImage
+        {
+            OriginalUrl = "/uploads/recipes/category-test/original.png",
+            ThumbnailUrl = "/uploads/recipes/category-test/thumbnail.png",
+            IsPrimary = true
+        });
         await using (var scope = factory.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             db.Categories.Add(category);
             db.Recipes.AddRange(
-                CreateRecipe(category.Id, authorSession.UserId, RecipeStatus.Published, "published"),
+                publishedRecipe,
                 CreateRecipe(category.Id, authorSession.UserId, RecipeStatus.Draft, "draft"));
+            (await db.Set<ApplicationUser>().SingleAsync(user => user.Id == authorSession.UserId)).AvatarUrl =
+                "/uploads/avatars/category-author.png";
             await db.SaveChangesAsync();
             scope.ServiceProvider.GetRequiredService<IMemoryCache>().Remove("categories:all");
         }
@@ -54,6 +64,28 @@ public sealed class CategoryTests(CustomWebApplicationFactory factory)
         guestDetail!.Recipes.TotalCount.Should().Be(1);
         guestDetail.Recipes.Items.Should().ContainSingle(item => item.Slug.EndsWith("-published"));
         guestDetail.Recipes.TotalPages.Should().Be(1);
+        var publishedSummary = guestDetail.Recipes.Items.Single();
+        publishedSummary.CategorySlug.Should().Be(category.Slug);
+        publishedSummary.AuthorId.Should().Be(authorSession.UserId);
+        publishedSummary.AuthorName.Should().Be("Category Author");
+        publishedSummary.AuthorAvatarUrl.Should().Be("/uploads/avatars/category-author.png");
+        publishedSummary.PrimaryImageUrl.Should().Be("/uploads/recipes/category-test/thumbnail.png");
+
+        var recipeListResponse = await client.GetAsync($"/api/v1/recipes?categoryId={category.Id}");
+        recipeListResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var recipeList = System.Text.Json.JsonDocument.Parse(
+            await recipeListResponse.Content.ReadAsStringAsync());
+        var listedRecipe = recipeList.RootElement.GetProperty("items").EnumerateArray().Single();
+        listedRecipe.GetProperty("categorySlug").GetString().Should().Be(category.Slug);
+        listedRecipe.GetProperty("authorAvatarUrl").GetString().Should().Be("/uploads/avatars/category-author.png");
+
+        var recipeDetailResponse = await client.GetAsync($"/api/v1/recipes/{publishedRecipe.Slug}");
+        recipeDetailResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var recipeDetail = System.Text.Json.JsonDocument.Parse(
+            await recipeDetailResponse.Content.ReadAsStringAsync());
+        recipeDetail.RootElement.GetProperty("categorySlug").GetString().Should().Be(category.Slug);
+        recipeDetail.RootElement.GetProperty("authorAvatarUrl").GetString()
+            .Should().Be("/uploads/avatars/category-author.png");
 
         var authorDetailResponse = await author.GetAsync($"/api/v1/categories/{category.Slug}?page=1&pageSize=1");
         authorDetailResponse.StatusCode.Should().Be(HttpStatusCode.OK);
