@@ -64,7 +64,19 @@ public sealed class RecipeRepository(ApplicationDbContext dbContext) : IRecipeRe
                 recipe.Difficulty.ToString(),
                 recipe.CategoryId,
                 recipe.Category.Name,
-                recipe.CreatedAt))
+                recipe.CreatedAt,
+                null,
+                recipe.Category.Slug,
+                recipe.AuthorId,
+                dbContext.Users.Where(user => user.Id == recipe.AuthorId)
+                    .Select(user => user.DisplayName)
+                    .FirstOrDefault(),
+                dbContext.Users.Where(user => user.Id == recipe.AuthorId)
+                    .Select(user => user.AvatarUrl)
+                    .FirstOrDefault(),
+                recipe.Images.Where(image => image.IsPrimary)
+                    .Select(image => image.ThumbnailUrl ?? image.MediumUrl ?? image.OriginalUrl)
+                    .FirstOrDefault()))
             .ToListAsync(cancellationToken);
 
         return PagedResult<RecipeSummaryDto>.Create(items, totalCount, query.Page, query.PageSize);
@@ -102,7 +114,18 @@ public sealed class RecipeRepository(ApplicationDbContext dbContext) : IRecipeRe
                 recipe.CategoryId,
                 recipe.Category.Name,
                 recipe.CreatedAt,
-                EF.Property<NpgsqlTsVector>(recipe, "SearchVector").Rank(EF.Functions.ToTsQuery("simple", tsQuery))))
+                EF.Property<NpgsqlTsVector>(recipe, "SearchVector").Rank(EF.Functions.ToTsQuery("simple", tsQuery)),
+                recipe.Category.Slug,
+                recipe.AuthorId,
+                dbContext.Users.Where(user => user.Id == recipe.AuthorId)
+                    .Select(user => user.DisplayName)
+                    .FirstOrDefault(),
+                dbContext.Users.Where(user => user.Id == recipe.AuthorId)
+                    .Select(user => user.AvatarUrl)
+                    .FirstOrDefault(),
+                recipe.Images.Where(image => image.IsPrimary)
+                    .Select(image => image.ThumbnailUrl ?? image.MediumUrl ?? image.OriginalUrl)
+                    .FirstOrDefault()))
             .ToListAsync(cancellationToken);
 
         return PagedResult<RecipeSummaryDto>.Create(items, totalCount, query.Page, query.PageSize);

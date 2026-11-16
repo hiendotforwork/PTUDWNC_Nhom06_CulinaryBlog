@@ -70,9 +70,26 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   // Start with null; restore from localStorage via useEffect below
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentUser, setCurrentUserState] = useState<User | null>(null);
 
   const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const setCurrentUser = useCallback((user: User | null) => {
+    setCurrentUserState(user);
+    if (user) {
+      setRecipes((previous) => previous.map((recipe) =>
+        recipe.author.id === user.id
+          ? {
+              ...recipe,
+              author: {
+                ...recipe.author,
+                displayName: user.displayName,
+                avatarUrl: user.avatarUrl,
+              },
+            }
+          : recipe
+      ));
+    }
+  }, []);
 
   const [categories, setCategories] = useState<Category[]>([
     {
@@ -139,7 +156,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           : "Không thể tải danh sách công thức từ backend.";
       showToast("error", message);
     }
-  }, [showToast]);
+  }, [setCurrentUser, showToast]);
 
   const reloadCategories = useCallback(async () => {
     try {
@@ -197,7 +214,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       cancelled = true;
       unsubscribe();
     };
-  }, [reloadCategories, reloadRecipes]);
+  }, [reloadCategories, reloadRecipes, setCurrentUser]);
 
   const addCategory = async (data: { name: string; description: string }): Promise<Category> => {
     const category = await apiCreateCategory(data);

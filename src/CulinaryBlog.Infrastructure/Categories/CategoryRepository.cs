@@ -74,7 +74,19 @@ public sealed class CategoryRepository(ApplicationDbContext db) : ICategoryRepos
                 recipe.Difficulty.ToString(),
                 recipe.CategoryId,
                 category.Name,
-                recipe.CreatedAt))
+                recipe.CreatedAt,
+                null,
+                category.Slug,
+                recipe.AuthorId,
+                db.Users.Where(user => user.Id == recipe.AuthorId)
+                    .Select(user => user.DisplayName)
+                    .FirstOrDefault(),
+                db.Users.Where(user => user.Id == recipe.AuthorId)
+                    .Select(user => user.AvatarUrl)
+                    .FirstOrDefault(),
+                recipe.Images.Where(image => image.IsPrimary)
+                    .Select(image => image.ThumbnailUrl ?? image.MediumUrl ?? image.OriginalUrl)
+                    .FirstOrDefault()))
             .ToListAsync(cancellationToken);
 
         return new CategoryDetailDto(

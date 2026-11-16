@@ -99,8 +99,8 @@ public sealed class RecipesController(
                                recipe.Id, recipe.Title, recipe.Slug, recipe.Description,
                                recipe.PrepTime, recipe.CookTime, recipe.Servings,
                                recipe.Difficulty, recipe.Status, recipe.PublishedAt,
-                               recipe.CategoryId, recipe.Category.Name,
-                               recipe.AuthorId, author.DisplayName,
+                               recipe.CategoryId, recipe.Category.Name, recipe.Category.Slug,
+                               recipe.AuthorId, author.DisplayName, author.AvatarUrl,
                                recipe.Images.Where(i => i.IsPrimary)
                                    .Select(i => i.ThumbnailUrl ?? i.MediumUrl ?? i.OriginalUrl).FirstOrDefault(),
                                recipe.CreatedAt, Convert.ToBase64String(recipe.RowVersion)))
@@ -125,12 +125,13 @@ public sealed class RecipesController(
         if (recipe.Status != RecipeStatus.Published && recipe.AuthorId != userId && !User.IsInRole("Admin"))
             return NotFound();
 
-        var authorName = await db.Users.AsNoTracking().Where(x => x.Id == recipe.AuthorId)
-            .Select(x => x.DisplayName).SingleAsync(cancellationToken);
+        var author = await db.Users.AsNoTracking().Where(x => x.Id == recipe.AuthorId)
+            .Select(x => new { x.DisplayName, x.AvatarUrl }).SingleAsync(cancellationToken);
         return Ok(new RecipeDetailResponse(
             recipe.Id, recipe.Title, recipe.Slug, recipe.Description, recipe.Instructions,
             recipe.PrepTime, recipe.CookTime, recipe.Servings, recipe.Difficulty, recipe.Status,
-            recipe.PublishedAt, recipe.CategoryId, recipe.Category.Name, recipe.AuthorId, authorName,
+            recipe.PublishedAt, recipe.CategoryId, recipe.Category.Name, recipe.Category.Slug,
+            recipe.AuthorId, author.DisplayName, author.AvatarUrl,
             recipe.Nutrition,
             recipe.Ingredients.OrderBy(x => x.OrderIndex).Select(x => new RecipeIngredientItem(x.Id, x.Name, x.Quantity, x.Unit, x.Notes, x.OrderIndex, Convert.ToBase64String(x.RowVersion))),
             recipe.Steps.OrderBy(x => x.StepNumber).Select(x => new RecipeStepItem(x.Id, x.StepNumber, x.Title, x.Description, x.TimerMinutes, x.ImageUrl, Convert.ToBase64String(x.RowVersion))),
@@ -346,11 +347,11 @@ public sealed class RecipesController(
 }
 
 public sealed record RecipePageResponse(IReadOnlyList<RecipeListItem> Items, int TotalCount, int Page, int PageSize, int TotalPages, bool HasNextPage, bool HasPreviousPage);
-public sealed record RecipeListItem(Guid Id, string Title, string Slug, string Description, int PrepTime, int CookTime, int Servings, RecipeDifficulty Difficulty, RecipeStatus Status, DateTimeOffset? PublishedAt, Guid CategoryId, string CategoryName, string AuthorId, string AuthorName, string? PrimaryImageUrl, DateTimeOffset CreatedAt, string RowVersion);
+public sealed record RecipeListItem(Guid Id, string Title, string Slug, string Description, int PrepTime, int CookTime, int Servings, RecipeDifficulty Difficulty, RecipeStatus Status, DateTimeOffset? PublishedAt, Guid CategoryId, string CategoryName, string CategorySlug, string AuthorId, string AuthorName, string? AuthorAvatarUrl, string? PrimaryImageUrl, DateTimeOffset CreatedAt, string RowVersion);
 public sealed record RecipeIngredientItem(Guid Id, string Name, decimal? Quantity, string? Unit, string? Notes, int OrderIndex, string RowVersion);
 public sealed record RecipeStepItem(Guid Id, int StepNumber, string Title, string Description, int? TimerMinutes, string? ImageUrl, string RowVersion);
 public sealed record RecipeImageItem(Guid Id, string OriginalUrl, string? MediumUrl, string? ThumbnailUrl, string? AltText, bool IsPrimary, int OrderIndex, string RowVersion);
-public sealed record RecipeDetailResponse(Guid Id, string Title, string Slug, string Description, string Instructions, int PrepTime, int CookTime, int Servings, RecipeDifficulty Difficulty, RecipeStatus Status, DateTimeOffset? PublishedAt, Guid CategoryId, string CategoryName, string AuthorId, string AuthorName, RecipeNutrition Nutrition, IEnumerable<RecipeIngredientItem> Ingredients, IEnumerable<RecipeStepItem> Steps, IEnumerable<RecipeImageItem> Images, string RowVersion, DateTimeOffset CreatedAt, DateTimeOffset? UpdatedAt);
+public sealed record RecipeDetailResponse(Guid Id, string Title, string Slug, string Description, string Instructions, int PrepTime, int CookTime, int Servings, RecipeDifficulty Difficulty, RecipeStatus Status, DateTimeOffset? PublishedAt, Guid CategoryId, string CategoryName, string CategorySlug, string AuthorId, string AuthorName, string? AuthorAvatarUrl, RecipeNutrition Nutrition, IEnumerable<RecipeIngredientItem> Ingredients, IEnumerable<RecipeStepItem> Steps, IEnumerable<RecipeImageItem> Images, string RowVersion, DateTimeOffset CreatedAt, DateTimeOffset? UpdatedAt);
 public sealed record CreateRecipeRequest(string Title, string Description, string? Instructions, int PrepTime, int CookTime, int Servings, RecipeDifficulty Difficulty, Guid CategoryId, RecipeNutrition? Nutrition);
 public sealed record UpdateRecipeRequest(string Title, string Description, string? Instructions, int PrepTime, int CookTime, int Servings, RecipeDifficulty Difficulty, Guid CategoryId, RecipeNutrition? Nutrition, string RowVersion);
 public sealed record RecipeMutationResponse(Guid Id, string Slug, RecipeStatus Status, string RowVersion);
